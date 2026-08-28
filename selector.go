@@ -13,11 +13,16 @@ type Files = []File
 type FileSelector struct {
 	root          string
 	files         Files
-	selectedFiles map[int]bool
 	cursor        int
-	showSpinner   bool
-	spinner       Spinner
-	winSize       tea.WindowSizeMsg
+	selectedFiles map[int]bool
+
+	showSpinner bool
+	spinner     Spinner
+
+	showSearchBar bool
+	searchBar     TextInput
+
+	winSize tea.WindowSizeMsg
 }
 
 // Create new file selector that lists all files
@@ -28,20 +33,24 @@ func NewFileSelector(path string) (FileSelector, error) {
 		return FileSelector{}, err
 	}
 	return FileSelector{
-		root:        absPath,
-		showSpinner: true,
-		spinner:     NewSpinner(),
+		root:          absPath,
+		showSpinner:   true,
+		spinner:       NewSpinner(),
+		showSearchBar: false,
+		searchBar:     NewTextInput(),
 	}, nil
 }
 
 func (s FileSelector) Init() tea.Cmd {
-	return tea.Batch(walkDir(s.root), s.spinner.Init())
+	return tea.Batch(walkDir(s.root), s.spinner.Init(), s.searchBar.Init())
 }
 
 func (s FileSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		return s.handleKeyPressMsg(msg)
+		if !s.showSpinner && !s.showSearchBar {
+			return s.handleUserInput(msg)
+		}
 	case tea.WindowSizeMsg:
 		s.winSize = msg
 	case Files:
@@ -56,6 +65,13 @@ func (s FileSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return s, spinnerCmd
 		}
 	}
+	if s.showSearchBar {
+		searchBar, _ := s.searchBar.Update(msg)
+		s.searchBar = searchBar.(TextInput)
+		if s.searchBar.EndOfInput {
+			s.showSearchBar = false
+		}
+	}
 	return s, nil
 }
 
@@ -67,20 +83,24 @@ func (s FileSelector) View() tea.View {
 		return s.spinner.View()
 	}
 	viewStringBuilder := strings.Builder{}
-	startIndex := s.cursor / s.winSize.Height * s.winSize.Height
-	endIndex := startIndex + s.winSize.Height
+	maxVisibileEntries := s.winSize.Height - 1
+	startIndex := s.cursor / maxVisibileEntries * maxVisibileEntries
+	endIndex := startIndex + (maxVisibileEntries)
 	if endIndex > len(s.files) {
 		endIndex = len(s.files)
 	}
 	for i := startIndex; i < endIndex; i++ {
 		viewStringBuilder.WriteString(s.fileStringView(i))
 	}
+	if s.showSearchBar {
+		viewStringBuilder.WriteString(s.searchBar.View().Content)
+	}
 	view := tea.NewView(viewStringBuilder.String())
 	view.AltScreen = true
 	return view
 }
 
-func (s FileSelector) handleKeyPressMsg(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+func (s FileSelector) handleUserInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "down", "j":
 		s.cursor++
@@ -94,6 +114,9 @@ func (s FileSelector) handleKeyPressMsg(msg tea.KeyPressMsg) (tea.Model, tea.Cmd
 		}
 	case "space", "s":
 		s.selectedFiles[s.cursor] = !s.selectedFiles[s.cursor]
+	case "f", "/":
+		s.searchBar = NewTextInput()
+		s.showSearchBar = true
 	case "ctrl+c", "q", "esc":
 		return s, tea.Quit
 	}
