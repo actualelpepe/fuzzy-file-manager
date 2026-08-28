@@ -17,6 +17,7 @@ type FileSelector struct {
 	cursor        int
 	showSpinner   bool
 	spinner       Spinner
+	winSize       tea.WindowSizeMsg
 }
 
 // Create new file selector that lists all files
@@ -56,6 +57,8 @@ func (s FileSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+c", "q", "esc":
 			return s, tea.Quit
 		}
+	case tea.WindowSizeMsg:
+		s.winSize = msg
 	case Files:
 		s.files = msg
 		s.selectedFiles = make(map[int]bool)
@@ -72,29 +75,43 @@ func (s FileSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (s FileSelector) View() tea.View {
+	if s.winSize.Height <= 0 {
+		return tea.NewView("")
+	}
 	if s.showSpinner {
 		return s.spinner.View()
 	}
 	viewStringBuilder := strings.Builder{}
-	for index, file := range s.files {
-		viewStringBuilder.WriteRune(' ')
-		if s.selectedFiles[index] {
-			viewStringBuilder.WriteRune('*')
-		} else {
-			viewStringBuilder.WriteRune(' ')
-		}
-		if index == s.cursor {
-			viewStringBuilder.WriteRune('>')
-		} else {
-			viewStringBuilder.WriteRune(' ')
-		}
-		viewStringBuilder.WriteRune(' ')
-		viewStringBuilder.WriteString(file.path)
-		viewStringBuilder.WriteRune('\n')
+	startIndex := s.cursor / s.winSize.Height * s.winSize.Height
+	endIndex := startIndex + s.winSize.Height
+	if endIndex > len(s.files) {
+		endIndex = len(s.files)
+	}
+	for i := startIndex; i < endIndex; i++ {
+		viewStringBuilder.WriteString(s.fileStringView(i))
 	}
 	view := tea.NewView(viewStringBuilder.String())
 	view.AltScreen = true
 	return view
+}
+
+func (s FileSelector) fileStringView(index int) string {
+	fileViewBuilder := strings.Builder{}
+	fileViewBuilder.WriteRune(' ')
+	if s.selectedFiles[index] {
+		fileViewBuilder.WriteRune('*')
+	} else {
+		fileViewBuilder.WriteRune(' ')
+	}
+	if index == s.cursor {
+		fileViewBuilder.WriteRune('>')
+	} else {
+		fileViewBuilder.WriteRune(' ')
+	}
+	fileViewBuilder.WriteRune(' ')
+	fileViewBuilder.WriteString(s.files[index].path)
+	fileViewBuilder.WriteRune('\n')
+	return fileViewBuilder.String()
 }
 
 func walkDir(path string) tea.Cmd {
