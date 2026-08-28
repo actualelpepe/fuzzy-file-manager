@@ -11,10 +11,12 @@ import (
 type Files = []File
 
 type FileSelector struct {
-	root        string
-	files       Files
-	showSpinner bool
-	spinner     Spinner
+	root          string
+	files         Files
+	selectedFiles map[int]bool
+	cursor        int
+	showSpinner   bool
+	spinner       Spinner
 }
 
 // Create new file selector that lists all files
@@ -39,12 +41,26 @@ func (s FileSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
+		case "down", "j":
+			s.cursor++
+			if s.cursor == len(s.files) {
+				s.cursor = 0
+			}
+		case "up", "k":
+			s.cursor--
+			if s.cursor == -1 {
+				s.cursor = len(s.files) - 1
+			}
+		case "space", "s":
+			s.selectedFiles[s.cursor] = !s.selectedFiles[s.cursor]
 		case "ctrl+c", "q", "esc":
 			return s, tea.Quit
 		}
 	case Files:
 		s.files = msg
+		s.selectedFiles = make(map[int]bool)
 		s.showSpinner = false
+		s.cursor = 0
 	case spinnerTickMsg:
 		if s.showSpinner {
 			spinner, spinnerCmd := s.spinner.Update(msg)
@@ -60,7 +76,19 @@ func (s FileSelector) View() tea.View {
 		return s.spinner.View()
 	}
 	viewStringBuilder := strings.Builder{}
-	for _, file := range s.files {
+	for index, file := range s.files {
+		viewStringBuilder.WriteRune(' ')
+		if s.selectedFiles[index] {
+			viewStringBuilder.WriteRune('*')
+		} else {
+			viewStringBuilder.WriteRune(' ')
+		}
+		if index == s.cursor {
+			viewStringBuilder.WriteRune('>')
+		} else {
+			viewStringBuilder.WriteRune(' ')
+		}
+		viewStringBuilder.WriteRune(' ')
 		viewStringBuilder.WriteString(file.path)
 		viewStringBuilder.WriteRune('\n')
 	}
@@ -71,10 +99,12 @@ func (s FileSelector) View() tea.View {
 
 func walkDir(path string) tea.Cmd {
 	return func() tea.Msg {
-		files := Files{}
+		files := make(Files, 0)
 		if err := filepath.Walk(path,
 			func(path string, info fs.FileInfo, err error) error {
 				if err != nil {
+					// I must collect the errors and put them in some
+					// kind of error screen
 					return nil
 				}
 				files = append(files, File{name: info.Name(), path: path})

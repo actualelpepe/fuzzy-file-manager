@@ -13,7 +13,11 @@ func Error(err error) {
 }
 
 func main() {
-	fileSelector, err := NewFileSelector(".")
+	rootDir := "."
+	if len(os.Args) == 2 {
+		rootDir = os.Args[1]
+	}
+	fileSelector, err := NewFileSelector(rootDir)
 	if err != nil {
 		Error(err)
 	}
