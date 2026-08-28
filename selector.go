@@ -41,22 +41,7 @@ func (s FileSelector) Init() tea.Cmd {
 func (s FileSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "down", "j":
-			s.cursor++
-			if s.cursor == len(s.files) {
-				s.cursor = 0
-			}
-		case "up", "k":
-			s.cursor--
-			if s.cursor == -1 {
-				s.cursor = len(s.files) - 1
-			}
-		case "space", "s":
-			s.selectedFiles[s.cursor] = !s.selectedFiles[s.cursor]
-		case "ctrl+c", "q", "esc":
-			return s, tea.Quit
-		}
+		return s.handleKeyPressMsg(msg)
 	case tea.WindowSizeMsg:
 		s.winSize = msg
 	case Files:
@@ -93,6 +78,26 @@ func (s FileSelector) View() tea.View {
 	view := tea.NewView(viewStringBuilder.String())
 	view.AltScreen = true
 	return view
+}
+
+func (s FileSelector) handleKeyPressMsg(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "down", "j":
+		s.cursor++
+		if s.cursor == len(s.files) {
+			s.cursor = 0
+		}
+	case "up", "k":
+		s.cursor--
+		if s.cursor == -1 {
+			s.cursor = len(s.files) - 1
+		}
+	case "space", "s":
+		s.selectedFiles[s.cursor] = !s.selectedFiles[s.cursor]
+	case "ctrl+c", "q", "esc":
+		return s, tea.Quit
+	}
+	return s, nil
 }
 
 func (s FileSelector) fileStringView(index int) string {
