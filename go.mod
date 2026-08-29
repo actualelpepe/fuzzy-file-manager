@@ -2,7 +2,10 @@ module github.com/actualelpepe/fuzzy-file-manager
 
 go 1.27.0
 
-require charm.land/bubbletea/v2 v2.0.9
+require (
+	charm.land/bubbletea/v2 v2.0.9
+	github.com/lithammer/fuzzysearch v1.1.8
+)
 
 require (
 	github.com/aymanbagabas/go-udiff v0.4.1 // indirect
@@ -23,4 +26,5 @@ require (
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/text v0.9.0 // indirect
 )

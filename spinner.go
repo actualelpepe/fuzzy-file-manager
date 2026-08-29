@@ -14,7 +14,7 @@ type Spinner struct {
 
 func NewSpinner() Spinner {
 	return Spinner{
-		frames:       []string{"/", "-", "\\", "|", "/", "-", "\\", "|"},
+		frames:       []string{".", "..", "..."},
 		currentFrame: 0,
 		speed:        time.Second / 5,
 	}
@@ -37,7 +37,7 @@ func (s Spinner) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (s Spinner) View() tea.View {
-	view := tea.NewView(s.frames[s.currentFrame])
+	view := tea.NewView("Loading" + s.frames[s.currentFrame])
 	view.AltScreen = true
 	return view
 }

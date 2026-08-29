@@ -6,21 +6,24 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/lithammer/fuzzysearch/fuzzy"
 )
 
 type Files = []File
+type SelectedFiles map[File]bool
 
 type FileSelector struct {
 	root          string
-	files         Files
 	cursor        int
-	selectedFiles map[int]bool
+	files         Files
+	searchedFiles Files
+	selectedFiles SelectedFiles
 
 	showSpinner bool
 	spinner     Spinner
 
 	showSearchBar bool
-	searchBar     TextInput
+	searchBar     SearchBar
 
 	winSize tea.WindowSizeMsg
 }
@@ -37,7 +40,7 @@ func NewFileSelector(path string) (FileSelector, error) {
 		showSpinner:   true,
 		spinner:       NewSpinner(),
 		showSearchBar: false,
-		searchBar:     NewTextInput(),
+		searchBar:     NewSearchBar(),
 	}, nil
 }
 
@@ -53,11 +56,14 @@ func (s FileSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.WindowSizeMsg:
 		s.winSize = msg
+		return s, nil
 	case Files:
 		s.files = msg
-		s.selectedFiles = make(map[int]bool)
+		s.searchedFiles = msg
+		s.selectedFiles = make(SelectedFiles)
 		s.showSpinner = false
 		s.cursor = 0
+		return s, nil
 	case spinnerTickMsg:
 		if s.showSpinner {
 			spinner, spinnerCmd := s.spinner.Update(msg)
@@ -65,13 +71,8 @@ func (s FileSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return s, spinnerCmd
 		}
 	}
-	if s.showSearchBar {
-		searchBar, _ := s.searchBar.Update(msg)
-		s.searchBar = searchBar.(TextInput)
-		if s.searchBar.EndOfInput {
-			s.showSearchBar = false
-		}
-	}
+	s = s.updateSearchBar(msg)
+	s = s.filterFiles()
 	return s, nil
 }
 
@@ -86,36 +87,76 @@ func (s FileSelector) View() tea.View {
 	maxVisibileEntries := s.winSize.Height - 1
 	startIndex := s.cursor / maxVisibileEntries * maxVisibileEntries
 	endIndex := startIndex + (maxVisibileEntries)
-	if endIndex > len(s.files) {
-		endIndex = len(s.files)
+	if endIndex > len(s.searchedFiles) {
+		endIndex = len(s.searchedFiles)
 	}
 	for i := startIndex; i < endIndex; i++ {
 		viewStringBuilder.WriteString(s.fileStringView(i))
 	}
 	if s.showSearchBar {
-		viewStringBuilder.WriteString(s.searchBar.View().Content)
+		padding := ""
+		if endIndex-startIndex < maxVisibileEntries {
+			for i := endIndex - startIndex; i < maxVisibileEntries; i++ {
+				padding += "\n"
+			}
+		}
+		viewStringBuilder.WriteString(padding + s.searchBar.View().Content)
 	}
 	view := tea.NewView(viewStringBuilder.String())
 	view.AltScreen = true
 	return view
 }
 
+func (s FileSelector) filterFiles() FileSelector {
+	if s.searchBar.Content != "" {
+		s.searchedFiles = Files{}
+		for _, file := range s.files {
+			if fuzzy.Match(s.searchBar.Content, file.path) {
+				s.searchedFiles = append(s.searchedFiles, file)
+			}
+		}
+		if len(s.searchedFiles) == 0 {
+			s.searchedFiles = s.files
+		}
+		s.cursor = 0
+	} else {
+		s.searchedFiles = s.files
+	}
+	return s
+}
+
+func (s FileSelector) updateSearchBar(msg tea.Msg) FileSelector {
+	if s.showSearchBar {
+		searchBar, _ := s.searchBar.Update(msg)
+		s.searchBar = searchBar.(SearchBar)
+		if s.searchBar.EndOfInput {
+			s.showSearchBar = false
+		}
+	}
+	return s
+}
+
 func (s FileSelector) handleUserInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "down", "j":
-		s.cursor++
-		if s.cursor == len(s.files) {
-			s.cursor = 0
+		if len(s.searchedFiles) > 0 {
+			s.cursor++
+			if s.cursor == len(s.searchedFiles) {
+				s.cursor = 0
+			}
 		}
 	case "up", "k":
-		s.cursor--
-		if s.cursor == -1 {
-			s.cursor = len(s.files) - 1
+		if len(s.searchedFiles) > 0 {
+			s.cursor--
+			if s.cursor == -1 {
+				s.cursor = len(s.searchedFiles) - 1
+			}
 		}
 	case "space", "s":
-		s.selectedFiles[s.cursor] = !s.selectedFiles[s.cursor]
+		selectedFile := s.searchedFiles[s.cursor]
+		s.selectedFiles[selectedFile] = !s.selectedFiles[selectedFile]
 	case "f", "/":
-		s.searchBar = NewTextInput()
+		s.searchBar.EndOfInput = false
 		s.showSearchBar = true
 	case "ctrl+c", "q", "esc":
 		return s, tea.Quit
@@ -126,7 +167,7 @@ func (s FileSelector) handleUserInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 func (s FileSelector) fileStringView(index int) string {
 	fileViewBuilder := strings.Builder{}
 	fileViewBuilder.WriteRune(' ')
-	if s.selectedFiles[index] {
+	if s.selectedFiles[s.searchedFiles[index]] {
 		fileViewBuilder.WriteRune('*')
 	} else {
 		fileViewBuilder.WriteRune(' ')
@@ -137,14 +178,14 @@ func (s FileSelector) fileStringView(index int) string {
 		fileViewBuilder.WriteRune(' ')
 	}
 	fileViewBuilder.WriteRune(' ')
-	fileViewBuilder.WriteString(s.files[index].path)
+	fileViewBuilder.WriteString(s.searchedFiles[index].path)
 	fileViewBuilder.WriteRune('\n')
 	return fileViewBuilder.String()
 }
 
 func walkDir(path string) tea.Cmd {
 	return func() tea.Msg {
-		files := make(Files, 0)
+		files := Files{}
 		if err := filepath.Walk(path,
 			func(path string, info fs.FileInfo, err error) error {
 				if err != nil {
