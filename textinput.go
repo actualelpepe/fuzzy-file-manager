@@ -4,25 +4,25 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-type SearchBar struct {
+type TextInput struct {
 	Content    string
 	Prompt     string
 	EndOfInput bool
 }
 
-func NewSearchBar() SearchBar {
-	return SearchBar{
+func NewTextInput() TextInput {
+	return TextInput{
 		Content:    "",
-		Prompt:     "/",
+		Prompt:     "> ",
 		EndOfInput: false,
 	}
 }
 
-func (t SearchBar) Init() tea.Cmd {
+func (t TextInput) Init() tea.Cmd {
 	return nil
 }
 
-func (t SearchBar) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (t TextInput) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		if !t.EndOfInput {
@@ -46,7 +46,7 @@ func (t SearchBar) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return t, nil
 }
 
-func (t SearchBar) View() tea.View {
+func (t TextInput) View() tea.View {
 	view := tea.NewView(t.Prompt + t.Content)
 	view.AltScreen = true
 	return view

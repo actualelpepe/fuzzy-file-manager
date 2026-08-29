@@ -23,7 +23,7 @@ type FileSelector struct {
 	spinner     Spinner
 
 	showSearchBar bool
-	searchBar     SearchBar
+	searchBar     TextInput
 
 	winSize tea.WindowSizeMsg
 }
@@ -35,12 +35,14 @@ func NewFileSelector(path string) (FileSelector, error) {
 	if err != nil {
 		return FileSelector{}, err
 	}
+	searchBar := NewTextInput()
+	searchBar.Prompt = "/"
 	return FileSelector{
 		root:          absPath,
 		showSpinner:   true,
 		spinner:       NewSpinner(),
 		showSearchBar: false,
-		searchBar:     NewSearchBar(),
+		searchBar:     searchBar,
 	}, nil
 }
 
@@ -128,7 +130,7 @@ func (s FileSelector) filterFiles() FileSelector {
 func (s FileSelector) updateSearchBar(msg tea.Msg) FileSelector {
 	if s.showSearchBar {
 		searchBar, _ := s.searchBar.Update(msg)
-		s.searchBar = searchBar.(SearchBar)
+		s.searchBar = searchBar.(TextInput)
 		if s.searchBar.EndOfInput {
 			s.showSearchBar = false
 		}
