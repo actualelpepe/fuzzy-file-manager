@@ -113,7 +113,7 @@ func (s FileSelector) filterFiles() FileSelector {
 	if s.searchBar.Content != "" {
 		s.searchedFiles = Files{}
 		for _, file := range s.files {
-			if fuzzy.Match(s.searchBar.Content, file.path) {
+			if fuzzy.MatchNormalizedFold(s.searchBar.Content, file.path) {
 				s.searchedFiles = append(s.searchedFiles, file)
 			}
 		}
