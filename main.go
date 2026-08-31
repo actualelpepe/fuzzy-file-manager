@@ -17,7 +17,7 @@ func main() {
 	if len(os.Args) == 2 {
 		rootDir = os.Args[1]
 	}
-	fileSelector, err := NewFileSelector(rootDir)
+	fileSelector, err := NewFileManager(rootDir)
 	if err != nil {
 		Error(err)
 	}

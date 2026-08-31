@@ -3,6 +3,7 @@ package main
 import (
 	"io/fs"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -92,13 +93,20 @@ func (s FileSelector) View() tea.View {
 	if endIndex > len(s.searchedFiles) {
 		endIndex = len(s.searchedFiles)
 	}
+	entriesWritten := 0
 	for i := startIndex; i < endIndex; i++ {
 		viewStringBuilder.WriteString(s.fileStringView(i))
+		viewStringBuilder.WriteRune('\n')
+		entriesWritten++
+	}
+	if entriesWritten == 0 {
+		viewStringBuilder.WriteString("*Crickets*\n")
+		entriesWritten++
 	}
 	if s.showSearchBar {
 		padding := ""
-		if endIndex-startIndex < maxVisibileEntries {
-			for i := endIndex - startIndex; i < maxVisibileEntries; i++ {
+		if entriesWritten < maxVisibileEntries {
+			for i := entriesWritten; i < maxVisibileEntries; i++ {
 				padding += "\n"
 			}
 		}
@@ -113,12 +121,10 @@ func (s FileSelector) filterFiles() FileSelector {
 	if s.searchBar.Content != "" {
 		s.searchedFiles = Files{}
 		for _, file := range s.files {
-			if fuzzy.MatchNormalizedFold(s.searchBar.Content, file.path) {
+			regexMatch, _ := regexp.MatchString(s.searchBar.Content, file.name)
+			if regexMatch || fuzzy.MatchNormalizedFold(s.searchBar.Content, file.name) {
 				s.searchedFiles = append(s.searchedFiles, file)
 			}
-		}
-		if len(s.searchedFiles) == 0 {
-			s.searchedFiles = s.files
 		}
 		s.cursor = 0
 	} else {
@@ -160,8 +166,10 @@ func (s FileSelector) handleUserInput(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) 
 	case "f", "/":
 		s.searchBar.EndOfInput = false
 		s.showSearchBar = true
-	case "ctrl+c", "q", "esc":
-		return s, tea.Quit
+	case "F":
+		s.searchBar.Content = ""
+		s.searchedFiles = s.files
+		s.cursor = 0
 	}
 	return s, nil
 }
@@ -181,7 +189,6 @@ func (s FileSelector) fileStringView(index int) string {
 	}
 	fileViewBuilder.WriteRune(' ')
 	fileViewBuilder.WriteString(s.searchedFiles[index].path)
-	fileViewBuilder.WriteRune('\n')
 	return fileViewBuilder.String()
 }
 
