@@ -1,0 +1,3 @@
+- [ ] Move WalkDir to selector
+- [ ] Remove duplicate code
+- [ ] Run WalkDir when terminal gains focus
