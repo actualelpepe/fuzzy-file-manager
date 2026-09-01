@@ -10,7 +10,9 @@ type State int
 const (
 	Loading State = iota
 	Normal
-	Searching
+	Search
+	Delete
+	Message
 )
 
 type FileManager struct {
@@ -19,6 +21,7 @@ type FileManager struct {
 	spinner   Spinner
 	state     State
 	winSize   tea.WindowSizeMsg
+	message   string
 }
 
 func NewFileManager(path string) (FileManager, error) {
@@ -47,8 +50,12 @@ func (m FileManager) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateLoading(msg)
 	case Normal:
 		return m.updateNormal(msg)
-	case Searching:
-		return m.updateSearching(msg)
+	case Search:
+		return m.updateSearch(msg)
+	case Delete:
+		return m.updateDelete(msg)
+	case Message:
+		return m.updateMessage(msg)
 	}
 	return m, nil
 }
@@ -79,8 +86,11 @@ func (m FileManager) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "ctrl+c", "q", "esc":
 			return m, tea.Quit
+		case "d":
+			m.state = Delete
+			return m, tea.RequestWindowSize
 		case "f", "/":
-			m.state = Searching
+			m.state = Search
 			return m, tea.RequestWindowSize
 		case "F":
 			m.selector.Filter = ""
@@ -98,11 +108,15 @@ func (m FileManager) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		selector, cmd := m.selector.Update(RequestVisibleFilesUpdate())
 		m.selector = selector.(FileSelector)
 		return m, cmd
+	case DirWalkMsg:
+		selector, cmd := m.selector.Update(msg)
+		m.selector = selector.(FileSelector)
+		return m, tea.Batch(tea.RequestWindowSize, cmd)
 	}
 	return m, nil
 }
 
-func (m FileManager) updateSearching(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m FileManager) updateSearch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
@@ -126,23 +140,87 @@ func (m FileManager) updateSearching(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m FileManager) updateDelete(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyPressMsg:
+		switch msg.String() {
+		case "d":
+			return m, Remove(m.selector.GetSelectedFiles()...)
+		default:
+			m.state = Normal
+			return m, tea.RequestWindowSize
+		}
+	case tea.WindowSizeMsg:
+		m.winSize = msg
+		m.selector.ViewSize = ViewSize{msg.Width, msg.Height - 1}
+		selector, cmd := m.selector.Update(RequestVisibleFilesUpdate())
+		m.selector = selector.(FileSelector)
+		return m, cmd
+	case RemoveErrorMsg:
+		m.state = Message
+		m.message = "error: " + msg.Error()
+		return m, tea.RequestWindowSize
+	case RemoveMsg:
+		m.state = Normal
+		return m, tea.Batch(tea.RequestWindowSize, WalkDir(m.selector.root))
+	}
+	return m, nil
+}
+
+func (m FileManager) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyPressMsg:
+		m.state = Normal
+		return m, tea.RequestWindowSize
+	case tea.WindowSizeMsg:
+		m.winSize = msg
+		m.selector.ViewSize = ViewSize{msg.Width, msg.Height - 1}
+		selector, cmd := m.selector.Update(RequestVisibleFilesUpdate())
+		m.selector = selector.(FileSelector)
+		return m, cmd
+	}
+	return m, nil
+}
+
 func (m FileManager) View() tea.View {
 	switch m.state {
 	case Loading:
 		return m.spinner.View()
 	case Normal:
 		return m.selector.View()
-	case Searching:
-		return m.viewSearching()
+	case Search:
+		return m.viewSearch()
+	case Delete:
+		return m.viewDelete()
+	case Message:
+		return m.viewMessage()
 	}
 	invalidView := tea.NewView("Invalid program state. There is nothing you can do ¯\\_(ツ)_/¯")
 	invalidView.AltScreen = true
 	return invalidView
 }
 
-func (m FileManager) viewSearching() tea.View {
-	selectorStyle := lipgloss.NewStyle().MaxHeight(m.winSize.Height - 1).Height(m.winSize.Height - 1).SetString(m.selector.View().Content)
-	view := tea.NewView(selectorStyle.String() + "\n" + m.searchBar.View().Content)
+func (m FileManager) viewSearch() tea.View {
+	selectorString := createSelectorViewStyle(m.winSize.Height - 1).Render(m.selector.View().Content)
+	view := tea.NewView(selectorString + "\n" + m.searchBar.View().Content)
 	view.AltScreen = true
 	return view
+}
+
+func (m FileManager) viewDelete() tea.View {
+	selectorString := createSelectorViewStyle(m.winSize.Height - 1).Render(m.selector.View().Content)
+	view := tea.NewView(selectorString + "\nConfirm deletion by pressing 'd' again.")
+	view.AltScreen = true
+	return view
+}
+
+func (m FileManager) viewMessage() tea.View {
+	selectorString := createSelectorViewStyle(m.winSize.Height - 1).Render(m.selector.View().Content)
+	view := tea.NewView(selectorString + "\n" + m.message)
+	view.AltScreen = true
+	return view
+}
+
+func createSelectorViewStyle(height int) lipgloss.Style {
+	return lipgloss.NewStyle().MaxHeight(height).Height(height)
 }

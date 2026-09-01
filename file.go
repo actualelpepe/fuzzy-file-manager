@@ -1,6 +1,8 @@
 package main
 
 type File struct {
-	name string
-	path string
+	Name         string
+	RelativePath string
+	AbsolutePath string
+	IsDir        bool
 }

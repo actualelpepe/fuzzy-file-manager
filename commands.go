@@ -2,6 +2,7 @@ package main
 
 import (
 	"io/fs"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -11,6 +12,8 @@ import (
 type VisibleFilesUpdateMsg struct{}
 type SpinnerTickMsg struct{}
 type DirWalkMsg = []File
+type RemoveErrorMsg error
+type RemoveMsg struct{}
 
 func RequestVisibleFilesUpdate() VisibleFilesUpdateMsg {
 	return VisibleFilesUpdateMsg{}
@@ -34,11 +37,28 @@ func WalkDir(root string) tea.Cmd {
 				if len(relativePath) == 0 {
 					return nil
 				}
-				files = append(files, File{name: info.Name(), path: relativePath[1:]})
+				file := File{
+					Name:         info.Name(),
+					AbsolutePath: path,
+					RelativePath: relativePath[1:],
+					IsDir:        info.IsDir(),
+				}
+				files = append(files, file)
 				return nil
 			}); err != nil {
 			return err
 		}
 		return files
+	}
+}
+
+func Remove(files ...File) tea.Cmd {
+	return func() tea.Msg {
+		for _, file := range files {
+			if err := os.Remove(file.AbsolutePath); err != nil {
+				return RemoveErrorMsg(err)
+			}
+		}
+		return RemoveMsg{}
 	}
 }

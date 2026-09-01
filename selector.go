@@ -40,7 +40,7 @@ func NewFileSelector(path string) (FileSelector, error) {
 }
 
 func (s FileSelector) Init() tea.Cmd {
-	return tea.Batch(WalkDir(s.root))
+	return WalkDir(s.root)
 }
 
 func (s FileSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -84,6 +84,17 @@ func (s FileSelector) View() tea.View {
 	return view
 }
 
+func (s FileSelector) GetSelectedFiles() []File {
+	cursorFile := s.visibleFiles[s.cursor]
+	files := []File{cursorFile}
+	for i, v := range s.selectedFiles {
+		if v && i != cursorFile {
+			files = append(files, i)
+		}
+	}
+	return files
+}
+
 func (s FileSelector) handleUserInput(msg tea.KeyPressMsg) FileSelector {
 	switch msg.String() {
 	case "down", "j":
@@ -123,10 +134,10 @@ func (s FileSelector) updateVisibleFiles() DirWalkMsg {
 func (s FileSelector) filterFiles() DirWalkMsg {
 	files := DirWalkMsg{}
 	for _, file := range s.files {
-		regexMatch, _ := regexp.MatchString(s.Filter, file.path)
+		regexMatch, _ := regexp.MatchString(s.Filter, file.RelativePath)
 		if regexMatch {
 			files = slices.Insert(files, 0, file)
-		} else if fuzzy.MatchNormalizedFold(s.Filter, file.path) {
+		} else if fuzzy.MatchNormalizedFold(s.Filter, file.RelativePath) {
 			files = append(files, file)
 		}
 	}
@@ -147,6 +158,6 @@ func (s FileSelector) fileStringView(index int) string {
 		fileViewBuilder.WriteRune(' ')
 	}
 	fileViewBuilder.WriteRune(' ')
-	fileViewBuilder.WriteString(s.visibleFiles[index].path)
+	fileViewBuilder.WriteString(s.visibleFiles[index].RelativePath)
 	return fileViewBuilder.String()
 }
