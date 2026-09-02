@@ -17,14 +17,14 @@ type Files = []File
 type ViewSize = tea.WindowSizeMsg
 
 type FileSelector struct {
+	ViewSize ViewSize
+
 	root          string
 	cursor        int
 	files         Files
 	visibleFiles  Files
 	selectedFiles SelectedFiles
-
-	ViewSize ViewSize
-	filter   string
+	filter        string
 }
 
 // Create new file selector that lists all files

@@ -91,6 +91,9 @@ func (m FileManager) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "d":
 			m.state = Delete
 			return m, tea.RequestWindowSize
+		case "r":
+			m.state = Loading
+			return m, m.selector.RefreshFiles
 		case "f", "/":
 			m.state = Search
 			return m, tea.RequestWindowSize
