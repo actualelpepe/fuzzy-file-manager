@@ -24,7 +24,7 @@ type FileSelector struct {
 	selectedFiles SelectedFiles
 
 	ViewSize ViewSize
-	Filter   string
+	filter   string
 }
 
 // Create new file selector that lists all files
@@ -52,16 +52,10 @@ func (s FileSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case Files:
 		s.files = msg
 		s.selectedFiles = make(SelectedFiles)
-		s = s.UpdateVisibleFiles()
+		s = s.updateVisibleFiles()
 		return s, nil
 	}
 	return s, nil
-}
-
-func (s FileSelector) UpdateVisibleFiles() FileSelector {
-	s.visibleFiles = s.getVisibleFiles()
-	s.cursor = s.validateCursor()
-	return s
 }
 
 func (s FileSelector) View() tea.View {
@@ -84,6 +78,46 @@ func (s FileSelector) View() tea.View {
 	view := tea.NewView(viewStringBuilder.String())
 	view.AltScreen = true
 	return view
+}
+
+func (s FileSelector) SetFilter(filter string) FileSelector {
+	s.filter = filter
+	return s.updateVisibleFiles()
+}
+
+func (s FileSelector) ResetFilter() FileSelector {
+	return s.SetFilter("")
+}
+
+func (s FileSelector) RefreshFiles() tea.Msg {
+	files := Files{}
+	if err := filepath.Walk(s.root,
+		func(path string, info fs.FileInfo, err error) error {
+			if err != nil {
+				return nil
+			}
+			relativePath := path[len(s.root):]
+			if len(relativePath) == 0 {
+				return nil
+			}
+			file := File{
+				Name:         info.Name(),
+				AbsolutePath: path,
+				RelativePath: relativePath[1:],
+				IsDir:        info.IsDir(),
+			}
+			files = append(files, file)
+			return nil
+		}); err != nil {
+		return err
+	}
+	return files
+}
+
+func (s FileSelector) updateVisibleFiles() FileSelector {
+	s.visibleFiles = s.getVisibleFiles()
+	s.cursor = s.validateCursor()
+	return s
 }
 
 func (s FileSelector) GetSelectedFiles() []File {
@@ -127,7 +161,7 @@ func (s FileSelector) validateCursor() int {
 }
 
 func (s FileSelector) getVisibleFiles() Files {
-	if s.Filter == "" {
+	if s.filter == "" {
 		return s.files
 	}
 	return s.filterFiles()
@@ -136,10 +170,10 @@ func (s FileSelector) getVisibleFiles() Files {
 func (s FileSelector) filterFiles() Files {
 	files := Files{}
 	for _, file := range s.files {
-		regexMatch, _ := regexp.MatchString(s.Filter, file.RelativePath)
+		regexMatch, _ := regexp.MatchString(s.filter, file.RelativePath)
 		if regexMatch {
 			files = slices.Insert(files, 0, file)
-		} else if fuzzy.MatchNormalizedFold(s.Filter, file.RelativePath) {
+		} else if fuzzy.MatchNormalizedFold(s.filter, file.RelativePath) {
 			files = append(files, file)
 		}
 	}
@@ -162,29 +196,4 @@ func (s FileSelector) fileStringView(index int) string {
 	fileViewBuilder.WriteRune(' ')
 	fileViewBuilder.WriteString(s.visibleFiles[index].RelativePath)
 	return fileViewBuilder.String()
-}
-
-func (s FileSelector) RefreshFiles() tea.Msg {
-	files := Files{}
-	if err := filepath.Walk(s.root,
-		func(path string, info fs.FileInfo, err error) error {
-			if err != nil {
-				return nil
-			}
-			relativePath := path[len(s.root):]
-			if len(relativePath) == 0 {
-				return nil
-			}
-			file := File{
-				Name:         info.Name(),
-				AbsolutePath: path,
-				RelativePath: relativePath[1:],
-				IsDir:        info.IsDir(),
-			}
-			files = append(files, file)
-			return nil
-		}); err != nil {
-		return err
-	}
-	return files
 }

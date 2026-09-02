@@ -95,9 +95,8 @@ func (m FileManager) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state = Search
 			return m, tea.RequestWindowSize
 		case "F":
-			m.selector.Filter = ""
 			m.searchBar.Content = ""
-			m.selector = m.selector.UpdateVisibleFiles()
+			m.selector = m.selector.ResetFilter()
 			return m, nil
 		}
 		selector, cmd := m.selector.Update(msg)
@@ -119,11 +118,10 @@ func (m FileManager) updateSearch(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state = Normal
 			return m, tea.RequestWindowSize
 		}
-		searchBar, searchBarCmd := m.searchBar.Update(msg)
+		searchBar, _ := m.searchBar.Update(msg)
 		m.searchBar = searchBar.(TextInput)
-		m.selector.Filter = m.searchBar.Content
-		m.selector = m.selector.UpdateVisibleFiles()
-		return m, searchBarCmd
+		m.selector = m.selector.SetFilter(m.searchBar.Content)
+		return m, nil
 	case tea.WindowSizeMsg:
 		m.winSize = msg
 		m.selector.ViewSize = ViewSize{Width: msg.Width, Height: msg.Height - 1}
