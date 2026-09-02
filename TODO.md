@@ -1,3 +1,0 @@
-- [x] Move WalkDir to selector
-- [x] Remove duplicate code
-- [x] CANCELED: Run WalkDir when terminal gains focus
