@@ -21,7 +21,7 @@ func NewSpinner() Spinner {
 }
 
 func (s Spinner) Init() tea.Cmd {
-	return SpinnerTick(s.speed)
+	return s.Tick()
 }
 
 func (s Spinner) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -31,7 +31,7 @@ func (s Spinner) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if s.currentFrame == len(s.frames) {
 			s.currentFrame = 0
 		}
-		return s, SpinnerTick(s.speed)
+		return s, s.Tick()
 	}
 	return s, nil
 }
@@ -40,4 +40,10 @@ func (s Spinner) View() tea.View {
 	view := tea.NewView("Loading" + s.frames[s.currentFrame])
 	view.AltScreen = true
 	return view
+}
+
+type SpinnerTickMsg struct{}
+
+func (s Spinner) Tick() tea.Cmd {
+	return tea.Tick(s.speed, func(time.Time) tea.Msg { return SpinnerTickMsg{} })
 }

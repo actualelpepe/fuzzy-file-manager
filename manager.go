@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
@@ -71,11 +73,11 @@ func (m FileManager) updateLoading(msg tea.Msg) (tea.Model, tea.Cmd) {
 		spinner, cmd := m.spinner.Update(msg)
 		m.spinner = spinner.(Spinner)
 		return m, cmd
-	case DirWalkMsg:
-		m.state = Normal
-		selector, cmd := m.selector.Update(msg)
+	case Files:
+		selector, _ := m.selector.Update(msg)
 		m.selector = selector.(FileSelector)
-		return m, tea.Batch(tea.RequestWindowSize, cmd)
+		m.state = Normal
+		return m, tea.RequestWindowSize
 	}
 	return m, nil
 }
@@ -95,23 +97,16 @@ func (m FileManager) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "F":
 			m.selector.Filter = ""
 			m.searchBar.Content = ""
-			selector, cmd := m.selector.Update(RequestVisibleFilesUpdate())
-			m.selector = selector.(FileSelector)
-			return m, cmd
+			m.selector = m.selector.UpdateVisibleFiles()
+			return m, nil
 		}
 		selector, cmd := m.selector.Update(msg)
 		m.selector = selector.(FileSelector)
 		return m, cmd
 	case tea.WindowSizeMsg:
 		m.winSize = msg
-		m.selector.ViewSize = ViewSize{msg.Width, msg.Height}
-		selector, cmd := m.selector.Update(RequestVisibleFilesUpdate())
-		m.selector = selector.(FileSelector)
-		return m, cmd
-	case DirWalkMsg:
-		selector, cmd := m.selector.Update(msg)
-		m.selector = selector.(FileSelector)
-		return m, tea.Batch(tea.RequestWindowSize, cmd)
+		m.selector.ViewSize = msg
+		return m, nil
 	}
 	return m, nil
 }
@@ -127,15 +122,12 @@ func (m FileManager) updateSearch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		searchBar, searchBarCmd := m.searchBar.Update(msg)
 		m.searchBar = searchBar.(TextInput)
 		m.selector.Filter = m.searchBar.Content
-		selector, selectorCmd := m.selector.Update(RequestVisibleFilesUpdate())
-		m.selector = selector.(FileSelector)
-		return m, tea.Batch(searchBarCmd, selectorCmd)
+		m.selector = m.selector.UpdateVisibleFiles()
+		return m, searchBarCmd
 	case tea.WindowSizeMsg:
 		m.winSize = msg
-		m.selector.ViewSize = ViewSize{msg.Width, msg.Height - 1}
-		selector, cmd := m.selector.Update(RequestVisibleFilesUpdate())
-		m.selector = selector.(FileSelector)
-		return m, cmd
+		m.selector.ViewSize = ViewSize{Width: msg.Width, Height: msg.Height - 1}
+		return m, nil
 	}
 	return m, nil
 }
@@ -145,24 +137,22 @@ func (m FileManager) updateDelete(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "d":
-			return m, Remove(m.selector.GetSelectedFiles()...)
+			return m, m.removeSelectedFiles
 		default:
 			m.state = Normal
 			return m, tea.RequestWindowSize
 		}
 	case tea.WindowSizeMsg:
 		m.winSize = msg
-		m.selector.ViewSize = ViewSize{msg.Width, msg.Height - 1}
-		selector, cmd := m.selector.Update(RequestVisibleFilesUpdate())
-		m.selector = selector.(FileSelector)
-		return m, cmd
+		m.selector.ViewSize = ViewSize{Width: msg.Width, Height: msg.Height - 1}
+		return m, nil
 	case RemoveErrorMsg:
 		m.state = Message
 		m.message = "error: " + msg.Error()
 		return m, tea.RequestWindowSize
 	case RemoveMsg:
-		m.state = Normal
-		return m, tea.Batch(tea.RequestWindowSize, WalkDir(m.selector.root))
+		m.state = Loading
+		return m, m.selector.RefreshFiles
 	}
 	return m, nil
 }
@@ -174,10 +164,8 @@ func (m FileManager) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.RequestWindowSize
 	case tea.WindowSizeMsg:
 		m.winSize = msg
-		m.selector.ViewSize = ViewSize{msg.Width, msg.Height - 1}
-		selector, cmd := m.selector.Update(RequestVisibleFilesUpdate())
-		m.selector = selector.(FileSelector)
-		return m, cmd
+		m.selector.ViewSize = ViewSize{Width: msg.Width, Height: msg.Height - 1}
+		return m, nil
 	}
 	return m, nil
 }
@@ -219,6 +207,18 @@ func (m FileManager) viewMessage() tea.View {
 	view := tea.NewView(selectorString + "\n" + m.message)
 	view.AltScreen = true
 	return view
+}
+
+type RemoveErrorMsg error
+type RemoveMsg struct{}
+
+func (m FileManager) removeSelectedFiles() tea.Msg {
+	for _, file := range m.selector.GetSelectedFiles() {
+		if err := os.Remove(file.AbsolutePath); err != nil {
+			return RemoveErrorMsg(err)
+		}
+	}
+	return RemoveMsg{}
 }
 
 func createSelectorViewStyle(height int) lipgloss.Style {
