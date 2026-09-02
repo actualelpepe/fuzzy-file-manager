@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/lithammer/fuzzysearch/fuzzy"
 )
@@ -132,19 +133,16 @@ func (s FileSelector) GetSelectedFiles() []File {
 }
 
 func (s FileSelector) handleUserInput(msg tea.KeyPressMsg) FileSelector {
-	switch msg.String() {
-	case "down", "j":
+	switch {
+	case key.Matches(msg, DefaultKeyMap.Down):
 		if len(s.visibleFiles) > 0 {
 			s.cursor++
 		}
-	case "up", "k":
+	case key.Matches(msg, DefaultKeyMap.Up):
 		if len(s.visibleFiles) > 0 {
 			s.cursor--
-			if s.cursor == -1 {
-				s.cursor = len(s.visibleFiles) - 1
-			}
 		}
-	case "space", "s":
+	case key.Matches(msg, DefaultKeyMap.Select):
 		selectedFile := s.visibleFiles[s.cursor]
 		s.selectedFiles[selectedFile] = !s.selectedFiles[selectedFile]
 	}

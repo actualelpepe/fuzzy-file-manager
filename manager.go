@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
@@ -65,8 +66,8 @@ func (m FileManager) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m FileManager) updateLoading(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "ctrl+c", "q", "esc":
+		switch {
+		case key.Matches(msg, DefaultKeyMap.Exit):
 			return m, tea.Quit
 		}
 	case SpinnerTickMsg:
@@ -85,19 +86,19 @@ func (m FileManager) updateLoading(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m FileManager) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "ctrl+c", "q", "esc":
+		switch {
+		case key.Matches(msg, DefaultKeyMap.Exit):
 			return m, tea.Quit
-		case "d":
+		case key.Matches(msg, DefaultKeyMap.Delete):
 			m.state = Delete
 			return m, tea.RequestWindowSize
-		case "r":
+		case key.Matches(msg, DefaultKeyMap.Refresh):
 			m.state = Loading
 			return m, m.selector.RefreshFiles
-		case "f", "/":
+		case key.Matches(msg, DefaultKeyMap.Search):
 			m.state = Search
 			return m, tea.RequestWindowSize
-		case "F":
+		case key.Matches(msg, DefaultKeyMap.ResetSearch):
 			m.searchBar.Content = ""
 			m.selector = m.selector.ResetFilter()
 			return m, nil
@@ -116,8 +117,12 @@ func (m FileManager) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m FileManager) updateSearch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "ctrl+c", "esc", "enter":
+		switch {
+		case key.Matches(msg, DefaultKeyMap.CancelSearch):
+			m.searchBar.Content = ""
+			m.selector = m.selector.ResetFilter()
+			fallthrough
+		case key.Matches(msg, DefaultKeyMap.ConfirmSearch):
 			m.state = Normal
 			return m, tea.RequestWindowSize
 		}
@@ -136,8 +141,8 @@ func (m FileManager) updateSearch(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m FileManager) updateDelete(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "d":
+		switch {
+		case key.Matches(msg, DefaultKeyMap.Delete):
 			return m, m.removeSelectedFiles
 		default:
 			m.state = Normal
