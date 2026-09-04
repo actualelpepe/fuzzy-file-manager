@@ -11,6 +11,8 @@ import (
 type KeyMap struct {
 	Up           key.Binding
 	Down         key.Binding
+	Top          key.Binding
+	Bottom       key.Binding
 	Quit         key.Binding
 	ShowSearch   key.Binding
 	StartSearch  key.Binding
@@ -30,6 +32,14 @@ var DefaultKeyMap = KeyMap{
 	Down: key.NewBinding(
 		key.WithKeys("j", "down"),
 		key.WithHelp("↓ j", "move down"),
+	),
+	Top: key.NewBinding(
+		key.WithKeys("g"),
+		key.WithHelp("g", "go to the top of the list"),
+	),
+	Bottom: key.NewBinding(
+		key.WithKeys("G"),
+		key.WithHelp("G", "go to the bottom of the list"),
 	),
 	Quit: key.NewBinding(
 		key.WithKeys("esc", "q"),

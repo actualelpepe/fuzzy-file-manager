@@ -95,8 +95,19 @@ func (m FileManager) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case key.Matches(msg, DefaultKeyMap.Quit):
 			return m, tea.Quit
+		case key.Matches(msg, DefaultKeyMap.Top):
+			m.selector = m.selector.GoTop()
+			return m, nil
+		case key.Matches(msg, DefaultKeyMap.Bottom):
+			m.selector = m.selector.GoBottom()
+			return m, nil
 		case key.Matches(msg, DefaultKeyMap.Delete):
-			m.state = Delete
+			if len(m.selector.GetSelectedFiles()) > 0 {
+				m.state = Delete
+			} else {
+				m.state = Message
+				m.message = "Nothing selected"
+			}
 			return m, tea.RequestWindowSize
 		case key.Matches(msg, DefaultKeyMap.Refresh):
 			m.state = Loading

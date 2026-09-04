@@ -118,6 +118,18 @@ func (s FileSelector) View() tea.View {
 	return view
 }
 
+func (s FileSelector) GoTop() FileSelector {
+	s.cursor = 0
+	return s
+}
+
+func (s FileSelector) GoBottom() FileSelector {
+	if len(s.visibleFiles) > 0 {
+		s.cursor = len(s.visibleFiles) - 1
+	}
+	return s
+}
+
 func (s FileSelector) RefreshFiles() tea.Msg {
 	files := Files{}
 	if err := filepath.Walk(s.root,
@@ -144,6 +156,9 @@ func (s FileSelector) RefreshFiles() tea.Msg {
 }
 
 func (s FileSelector) GetSelectedFiles() []File {
+	if len(s.visibleFiles) < 1 {
+		return []File{}
+	}
 	cursorFile := s.visibleFiles[s.cursor]
 	files := []File{cursorFile}
 	for i, v := range s.selectedFiles {
