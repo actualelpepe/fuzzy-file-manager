@@ -159,12 +159,14 @@ func (s FileSelector) GetSelectedFiles() []File {
 	if len(s.visibleFiles) < 1 {
 		return []File{}
 	}
-	cursorFile := s.visibleFiles[s.cursor]
-	files := []File{cursorFile}
+	files := []File{}
 	for i, v := range s.selectedFiles {
-		if v && i != cursorFile {
+		if v {
 			files = append(files, i)
 		}
+	}
+	if len(files) == 0 {
+		files = append(files, s.visibleFiles[s.cursor])
 	}
 	return files
 }
