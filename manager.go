@@ -48,6 +48,12 @@ func (m FileManager) Init() tea.Cmd {
 }
 
 func (m FileManager) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case FilterMsg, FilterQueryMessage:
+		selector, cmd := m.selector.Update(msg)
+		m.selector = selector.(FileSelector)
+		return m, cmd
+	}
 	switch m.state {
 	case Loading:
 		return m.updateLoading(msg)
@@ -108,7 +114,7 @@ func (m FileManager) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case tea.WindowSizeMsg:
 		m.winSize = msg
-		m.selector.ViewSize = msg
+		m.selector.ViewSize = ViewSize(msg)
 		return m, nil
 	}
 	return m, nil
@@ -120,15 +126,15 @@ func (m FileManager) updateSearch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case key.Matches(msg, DefaultKeyMap.CancelSearch):
 			m.searchBar.Content = ""
+			m.state = Normal
 			m.selector = m.selector.ResetFilter()
-			fallthrough
+			return m, tea.RequestWindowSize
 		case key.Matches(msg, DefaultKeyMap.ConfirmSearch):
 			m.state = Normal
-			return m, tea.RequestWindowSize
+			return m, tea.Batch(tea.RequestWindowSize, m.selector.ApplyFilter(m.searchBar.Content))
 		}
 		searchBar, _ := m.searchBar.Update(msg)
 		m.searchBar = searchBar.(TextInput)
-		m.selector = m.selector.SetFilter(m.searchBar.Content)
 		return m, nil
 	case tea.WindowSizeMsg:
 		m.winSize = msg

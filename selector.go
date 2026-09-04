@@ -15,17 +15,33 @@ import (
 type SelectedFiles map[File]bool
 type Files = []File
 
-type ViewSize = tea.WindowSizeMsg
+type ViewSize tea.WindowSizeMsg
+
+type FilterMsgType int
+
+const (
+	Regex FilterMsgType = iota
+	Fuzzy
+)
+
+type FilterMsg struct {
+	filter     string
+	file       File
+	filterType FilterMsgType
+	index      int
+}
+
+type FilterQueryMessage string
 
 type FileSelector struct {
 	ViewSize ViewSize
 
 	root          string
+	filter        string
 	cursor        int
 	files         Files
 	visibleFiles  Files
 	selectedFiles SelectedFiles
-	filter        string
 }
 
 // Create new file selector that lists all files
@@ -53,8 +69,28 @@ func (s FileSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case Files:
 		s.files = msg
 		s.selectedFiles = make(SelectedFiles)
-		s = s.updateVisibleFiles()
+		s.visibleFiles = s.files
+		s.cursor = s.validateCursor()
 		return s, nil
+	case FilterQueryMessage:
+		filter := string(msg)
+		if filter == "" {
+			return s.ResetFilter(), nil
+		}
+		s.visibleFiles = Files{}
+		s.filter = filter
+		return s, s.applyFilter(s.filter, 0)
+	case FilterMsg:
+		if msg.filter != s.filter {
+			return s, nil
+		}
+		switch msg.filterType {
+		case Fuzzy:
+			s.visibleFiles = append(s.visibleFiles, msg.file)
+		case Regex:
+			s.visibleFiles = slices.Insert(s.visibleFiles, 0, msg.file)
+		}
+		return s, s.applyFilter(msg.filter, msg.index+1)
 	}
 	return s, nil
 }
@@ -79,15 +115,6 @@ func (s FileSelector) View() tea.View {
 	view := tea.NewView(viewStringBuilder.String())
 	view.AltScreen = true
 	return view
-}
-
-func (s FileSelector) SetFilter(filter string) FileSelector {
-	s.filter = filter
-	return s.updateVisibleFiles()
-}
-
-func (s FileSelector) ResetFilter() FileSelector {
-	return s.SetFilter("")
 }
 
 func (s FileSelector) RefreshFiles() tea.Msg {
@@ -115,12 +142,6 @@ func (s FileSelector) RefreshFiles() tea.Msg {
 	return files
 }
 
-func (s FileSelector) updateVisibleFiles() FileSelector {
-	s.visibleFiles = s.getVisibleFiles()
-	s.cursor = s.validateCursor()
-	return s
-}
-
 func (s FileSelector) GetSelectedFiles() []File {
 	cursorFile := s.visibleFiles[s.cursor]
 	files := []File{cursorFile}
@@ -130,6 +151,36 @@ func (s FileSelector) GetSelectedFiles() []File {
 		}
 	}
 	return files
+}
+
+func (s FileSelector) ApplyFilter(filter string) tea.Cmd {
+	return func() tea.Msg {
+		return FilterQueryMessage(filter)
+	}
+}
+
+func (s FileSelector) ResetFilter() FileSelector {
+	s.filter = ""
+	s.visibleFiles = s.files
+	return s
+}
+
+func (s FileSelector) applyFilter(filter string, index int) tea.Cmd {
+	if index >= len(s.files) || index < 0 {
+		return nil
+	}
+	return func() tea.Msg {
+		for i := index; i < len(s.files); i++ {
+			file := s.files[i]
+			regexMatch, _ := regexp.MatchString(filter, file.RelativePath)
+			if regexMatch {
+				return FilterMsg{filterType: Regex, index: i, file: file, filter: filter}
+			} else if fuzzy.MatchNormalizedFold(filter, file.RelativePath) {
+				return FilterMsg{filterType: Fuzzy, index: i, file: file, filter: filter}
+			}
+		}
+		return nil
+	}
 }
 
 func (s FileSelector) handleUserInput(msg tea.KeyPressMsg) FileSelector {
@@ -156,26 +207,6 @@ func (s FileSelector) validateCursor() int {
 		return len(s.visibleFiles) - 1
 	}
 	return s.cursor
-}
-
-func (s FileSelector) getVisibleFiles() Files {
-	if s.filter == "" {
-		return s.files
-	}
-	return s.filterFiles()
-}
-
-func (s FileSelector) filterFiles() Files {
-	files := Files{}
-	for _, file := range s.files {
-		regexMatch, _ := regexp.MatchString(s.filter, file.RelativePath)
-		if regexMatch {
-			files = slices.Insert(files, 0, file)
-		} else if fuzzy.MatchNormalizedFold(s.filter, file.RelativePath) {
-			files = append(files, file)
-		}
-	}
-	return files
 }
 
 func (s FileSelector) fileStringView(index int) string {
