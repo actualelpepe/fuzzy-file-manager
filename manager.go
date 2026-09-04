@@ -73,7 +73,7 @@ func (m FileManager) updateLoading(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		switch {
-		case key.Matches(msg, DefaultKeyMap.Exit):
+		case key.Matches(msg, DefaultKeyMap.Quit):
 			return m, tea.Quit
 		}
 	case SpinnerTickMsg:
@@ -93,7 +93,7 @@ func (m FileManager) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		switch {
-		case key.Matches(msg, DefaultKeyMap.Exit):
+		case key.Matches(msg, DefaultKeyMap.Quit):
 			return m, tea.Quit
 		case key.Matches(msg, DefaultKeyMap.Delete):
 			m.state = Delete
@@ -101,13 +101,21 @@ func (m FileManager) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, DefaultKeyMap.Refresh):
 			m.state = Loading
 			return m, m.selector.RefreshFiles
-		case key.Matches(msg, DefaultKeyMap.Search):
+		case key.Matches(msg, DefaultKeyMap.ShowSearch):
 			m.state = Search
 			return m, tea.RequestWindowSize
-		case key.Matches(msg, DefaultKeyMap.ResetSearch):
+		case key.Matches(msg, DefaultKeyMap.ClearSearch):
 			m.searchBar.Content = ""
 			m.selector = m.selector.ResetFilter()
 			return m, nil
+		case key.Matches(msg, DefaultKeyMap.Help):
+			cmd, err := Less(DefaultKeyMap.GetHelpText())
+			if err != nil {
+				m.state = Message
+				m.message = err.Error()
+				return m, tea.RequestWindowSize
+			}
+			return m, cmd
 		}
 		selector, cmd := m.selector.Update(msg)
 		m.selector = selector.(FileSelector)
@@ -129,9 +137,12 @@ func (m FileManager) updateSearch(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.state = Normal
 			m.selector = m.selector.ResetFilter()
 			return m, tea.RequestWindowSize
-		case key.Matches(msg, DefaultKeyMap.ConfirmSearch):
+		case key.Matches(msg, DefaultKeyMap.StartSearch):
 			m.state = Normal
-			return m, tea.Batch(tea.RequestWindowSize, m.selector.ApplyFilter(m.searchBar.Content))
+			return m, tea.Batch(
+				tea.RequestWindowSize,
+				m.selector.ApplyFilter(m.searchBar.Content),
+			)
 		}
 		searchBar, _ := m.searchBar.Update(msg)
 		m.searchBar = searchBar.(TextInput)
@@ -195,27 +206,37 @@ func (m FileManager) View() tea.View {
 	case Message:
 		return m.viewMessage()
 	}
-	invalidView := tea.NewView("Invalid program state. There is nothing you can do ¯\\_(ツ)_/¯")
+	invalidView := tea.NewView(
+		"Invalid program state. There is nothing you can do ¯\\_(ツ)_/¯",
+	)
 	invalidView.AltScreen = true
 	return invalidView
 }
 
 func (m FileManager) viewSearch() tea.View {
-	selectorString := createSelectorViewStyle(m.winSize.Height - 1).Render(m.selector.View().Content)
+	selectorString := createSelectorViewStyle(m.winSize.Height - 1).
+		Render(m.selector.View().Content)
 	view := tea.NewView(selectorString + "\n" + m.searchBar.View().Content)
 	view.AltScreen = true
 	return view
 }
 
 func (m FileManager) viewDelete() tea.View {
-	selectorString := createSelectorViewStyle(m.winSize.Height - 1).Render(m.selector.View().Content)
-	view := tea.NewView(selectorString + "\nConfirm deletion by pressing 'd' again.")
+	selectorString := createSelectorViewStyle(m.winSize.Height - 1).
+		Render(m.selector.View().Content)
+	view := tea.NewView(
+		selectorString +
+			"\nConfirm deletion by pressing '" +
+			DefaultKeyMap.Delete.Help().Key +
+			"' again.",
+	)
 	view.AltScreen = true
 	return view
 }
 
 func (m FileManager) viewMessage() tea.View {
-	selectorString := createSelectorViewStyle(m.winSize.Height - 1).Render(m.selector.View().Content)
+	selectorString := createSelectorViewStyle(m.winSize.Height - 1).
+		Render(m.selector.View().Content)
 	view := tea.NewView(selectorString + "\n" + m.message)
 	view.AltScreen = true
 	return view

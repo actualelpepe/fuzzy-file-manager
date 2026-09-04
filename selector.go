@@ -79,6 +79,7 @@ func (s FileSelector) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		s.visibleFiles = Files{}
 		s.filter = filter
+		s.cursor = 0
 		return s, s.applyFilter(s.filter, 0)
 	case FilterMsg:
 		if msg.filter != s.filter {
