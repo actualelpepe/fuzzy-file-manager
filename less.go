@@ -10,7 +10,7 @@ import (
 func Less(data string) (tea.Cmd, error) {
 	file, err := os.CreateTemp("", "")
 	if err != nil {
-		return nil, nil
+		return nil, err
 	}
 	file.WriteString(data)
 	return tea.ExecProcess(exec.Command("less", file.Name()),

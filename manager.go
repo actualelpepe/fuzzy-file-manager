@@ -15,8 +15,10 @@ const (
 	Normal
 	Search
 	Delete
-	Message
+	Err
 )
+
+type RemoveMsg struct{}
 
 type FileManager struct {
 	selector  FileSelector
@@ -24,7 +26,7 @@ type FileManager struct {
 	spinner   Spinner
 	state     State
 	winSize   tea.WindowSizeMsg
-	message   string
+	errMsg    string
 }
 
 func NewFileManager(path string) (FileManager, error) {
@@ -53,6 +55,9 @@ func (m FileManager) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		selector, cmd := m.selector.Update(msg)
 		m.selector = selector.(FileSelector)
 		return m, cmd
+	case error:
+		m.errMsg = "error: " + msg.Error()
+		return m.setState(Err)
 	}
 	switch m.state {
 	case Loading:
@@ -63,8 +68,8 @@ func (m FileManager) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateSearch(msg)
 	case Delete:
 		return m.updateDelete(msg)
-	case Message:
-		return m.updateMessage(msg)
+	case Err:
+		return m.updateErr(msg)
 	}
 	return m, nil
 }
@@ -83,8 +88,7 @@ func (m FileManager) updateLoading(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case Files:
 		selector, _ := m.selector.Update(msg)
 		m.selector = selector.(FileSelector)
-		m.state = Normal
-		return m, tea.RequestWindowSize
+		return m.setState(Normal)
 	}
 	return m, nil
 }
@@ -102,19 +106,15 @@ func (m FileManager) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.selector = m.selector.GoBottom()
 			return m, nil
 		case key.Matches(msg, DefaultKeyMap.Delete):
-			if len(m.selector.GetSelectedFiles()) > 0 {
-				m.state = Delete
-			} else {
-				m.state = Message
-				m.message = "Nothing selected"
+			if len(m.selector.GetSelectedFiles()) == 0 {
+				m.errMsg = "Nothing selected"
+				return m.setState(Err)
 			}
-			return m, tea.RequestWindowSize
+			return m.setState(Delete)
 		case key.Matches(msg, DefaultKeyMap.Refresh):
-			m.state = Loading
-			return m, m.selector.RefreshFiles
+			return m.setState(Loading)
 		case key.Matches(msg, DefaultKeyMap.ShowSearch):
-			m.state = Search
-			return m, tea.RequestWindowSize
+			return m.setState(Search)
 		case key.Matches(msg, DefaultKeyMap.ClearSearch):
 			m.searchBar.Content = ""
 			m.selector = m.selector.ResetFilter()
@@ -122,9 +122,8 @@ func (m FileManager) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, DefaultKeyMap.Help):
 			cmd, err := Less(DefaultKeyMap.GetHelpText())
 			if err != nil {
-				m.state = Message
-				m.message = err.Error()
-				return m, tea.RequestWindowSize
+				m.errMsg = err.Error()
+				return m.setState(Err)
 			}
 			return m, cmd
 		}
@@ -145,13 +144,12 @@ func (m FileManager) updateSearch(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case key.Matches(msg, DefaultKeyMap.CancelSearch):
 			m.searchBar.Content = ""
-			m.state = Normal
 			m.selector = m.selector.ResetFilter()
-			return m, tea.RequestWindowSize
+			return m.setState(Normal)
 		case key.Matches(msg, DefaultKeyMap.StartSearch):
-			m.state = Normal
+			m, cmd := m.setState(Normal)
 			return m, tea.Batch(
-				tea.RequestWindowSize,
+				cmd,
 				m.selector.ApplyFilter(m.searchBar.Content),
 			)
 		}
@@ -173,29 +171,22 @@ func (m FileManager) updateDelete(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, DefaultKeyMap.Delete):
 			return m, m.removeSelectedFiles
 		default:
-			m.state = Normal
-			return m, tea.RequestWindowSize
+			return m.setState(Normal)
 		}
 	case tea.WindowSizeMsg:
 		m.winSize = msg
 		m.selector.ViewSize = ViewSize{Width: msg.Width, Height: msg.Height - 1}
 		return m, nil
-	case RemoveErrorMsg:
-		m.state = Message
-		m.message = "error: " + msg.Error()
-		return m, tea.RequestWindowSize
 	case RemoveMsg:
-		m.state = Loading
-		return m, m.selector.RefreshFiles
+		return m.setState(Loading)
 	}
 	return m, nil
 }
 
-func (m FileManager) updateMessage(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m FileManager) updateErr(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		m.state = Normal
-		return m, tea.RequestWindowSize
+		return m.setState(Normal)
 	case tea.WindowSizeMsg:
 		m.winSize = msg
 		m.selector.ViewSize = ViewSize{Width: msg.Width, Height: msg.Height - 1}
@@ -214,8 +205,8 @@ func (m FileManager) View() tea.View {
 		return m.viewSearch()
 	case Delete:
 		return m.viewDelete()
-	case Message:
-		return m.viewMessage()
+	case Err:
+		return m.viewErr()
 	}
 	invalidView := tea.NewView(
 		"Invalid program state. There is nothing you can do ¯\\_(ツ)_/¯",
@@ -245,24 +236,29 @@ func (m FileManager) viewDelete() tea.View {
 	return view
 }
 
-func (m FileManager) viewMessage() tea.View {
+func (m FileManager) viewErr() tea.View {
 	selectorString := createSelectorViewStyle(m.winSize.Height - 1).
 		Render(m.selector.View().Content)
-	view := tea.NewView(selectorString + "\n" + m.message)
+	view := tea.NewView(selectorString + "\n" + m.errMsg)
 	view.AltScreen = true
 	return view
 }
 
-type RemoveErrorMsg error
-type RemoveMsg struct{}
-
 func (m FileManager) removeSelectedFiles() tea.Msg {
 	for _, file := range m.selector.GetSelectedFiles() {
 		if err := os.Remove(file.AbsolutePath); err != nil {
-			return RemoveErrorMsg(err)
+			return err
 		}
 	}
 	return RemoveMsg{}
+}
+
+func (m FileManager) setState(state State) (FileManager, tea.Cmd) {
+	m.state = state
+	if state == Loading {
+		return m, m.selector.RefreshFiles
+	}
+	return m, tea.RequestWindowSize
 }
 
 func createSelectorViewStyle(height int) lipgloss.Style {
