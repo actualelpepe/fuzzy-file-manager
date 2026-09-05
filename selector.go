@@ -183,6 +183,10 @@ func (s FileSelector) ResetFilter() FileSelector {
 	return s
 }
 
+func (s FileSelector) Root() string {
+	return s.root
+}
+
 func (s FileSelector) applyFilter(filter string, index int) tea.Cmd {
 	if index >= len(s.files) || index < 0 {
 		return nil
