@@ -194,11 +194,21 @@ func (s FileSelector) applyFilter(filter string, index int) tea.Cmd {
 	return func() tea.Msg {
 		for i := index; i < len(s.files); i++ {
 			file := s.files[i]
-			regexMatch, _ := regexp.MatchString(filter, file.RelativePath)
+			regexMatch, _ := regexp.MatchString(filter, file.Name)
 			if regexMatch {
-				return FilterMsg{filterType: Regex, index: i, file: file, filter: filter}
-			} else if fuzzy.MatchNormalizedFold(filter, file.RelativePath) {
-				return FilterMsg{filterType: Fuzzy, index: i, file: file, filter: filter}
+				return FilterMsg{
+					filterType: Regex,
+					index:      i,
+					file:       file,
+					filter:     filter,
+				}
+			} else if fuzzy.MatchNormalizedFold(filter, file.Name) {
+				return FilterMsg{
+					filterType: Fuzzy,
+					index:      i,
+					file:       file,
+					filter:     filter,
+				}
 			}
 		}
 		return nil
