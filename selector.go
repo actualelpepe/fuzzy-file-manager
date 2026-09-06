@@ -254,5 +254,8 @@ func (s FileSelector) fileStringView(index int) string {
 	}
 	fileViewBuilder.WriteRune(' ')
 	fileViewBuilder.WriteString(s.visibleFiles[index].RelativePath)
+	if s.visibleFiles[index].IsDir {
+		fileViewBuilder.WriteRune('/')
+	}
 	return fileViewBuilder.String()
 }
