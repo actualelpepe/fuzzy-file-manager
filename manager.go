@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 
@@ -12,10 +13,13 @@ import (
 type State int
 
 const (
-	Loading State = iota
+	Refresh State = iota
 	Normal
 	Search
 	Delete
+	NewFileOrDir
+	NewFile
+	NewDir
 	Err
 )
 
@@ -24,6 +28,7 @@ type RemoveMsg struct{}
 type FileManager struct {
 	selector  FileSelector
 	searchBar TextInput
+	nameBar   TextInput
 	spinner   Spinner
 	state     State
 	winSize   tea.WindowSizeMsg
@@ -38,9 +43,10 @@ func NewFileManager(path string) (FileManager, error) {
 	searchBar := NewTextInput()
 	searchBar.Prompt = "/"
 	return FileManager{
+		state:     Refresh,
 		selector:  selector,
 		spinner:   NewSpinner(),
-		state:     Loading,
+		nameBar:   NewTextInput(),
 		searchBar: searchBar,
 	}, nil
 }
@@ -60,21 +66,27 @@ func (m FileManager) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.setState(Err)
 	}
 	switch m.state {
-	case Loading:
-		return m.updateLoading(msg)
+	case Refresh:
+		return m.updateRefresh(msg)
 	case Normal:
 		return m.updateNormal(msg)
 	case Search:
 		return m.updateSearch(msg)
 	case Delete:
 		return m.updateDelete(msg)
+	case NewFile:
+		return m.updateNameInput(msg, m.newFile)
+	case NewDir:
+		return m.updateNameInput(msg, m.newDir)
+	case NewFileOrDir:
+		return m.updateFileOrDir(msg)
 	case Err:
 		return m.updateErr(msg)
 	}
 	return m, nil
 }
 
-func (m FileManager) updateLoading(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m FileManager) updateRefresh(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		switch {
@@ -115,8 +127,10 @@ func (m FileManager) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.enterSelectedDir()
 		case key.Matches(msg, DefaultKeyMap.EnterParentDir):
 			return m.enterParentDir()
+		case key.Matches(msg, DefaultKeyMap.NewFileOrDir):
+			return m.setState(NewFileOrDir)
 		case key.Matches(msg, DefaultKeyMap.Refresh):
-			return m.setState(Loading)
+			return m.setState(Refresh)
 		case key.Matches(msg, DefaultKeyMap.ShowSearch):
 			return m.setState(Search)
 		case key.Matches(msg, DefaultKeyMap.ClearSearch):
@@ -146,11 +160,11 @@ func (m FileManager) updateSearch(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		switch {
-		case key.Matches(msg, DefaultKeyMap.CancelSearch):
+		case key.Matches(msg, DefaultKeyMap.Cancel):
 			m.searchBar.Content = ""
 			m.selector = m.selector.ResetFilter()
 			return m.setState(Normal)
-		case key.Matches(msg, DefaultKeyMap.StartSearch):
+		case key.Matches(msg, DefaultKeyMap.Accept):
 			m, cmd := m.setState(Normal)
 			return m, tea.Batch(
 				cmd,
@@ -182,7 +196,55 @@ func (m FileManager) updateDelete(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.selector.ViewSize = ViewSize{Width: msg.Width, Height: msg.Height - 1}
 		return m, nil
 	case RemoveMsg:
-		return m.setState(Loading)
+		return m.setState(Refresh)
+	}
+	return m, nil
+}
+
+func (m FileManager) updateNameInput(msg tea.Msg, createCmd func(string) tea.Cmd) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyPressMsg:
+		switch {
+		case key.Matches(msg, DefaultKeyMap.Cancel):
+			m.nameBar.Content = ""
+			return m.setState(Normal)
+		case key.Matches(msg, DefaultKeyMap.Accept):
+			name := m.nameBar.Content
+			m.nameBar.Content = ""
+			m, cmd := m.setState(Refresh)
+			return m, tea.Sequence(
+				createCmd(name),
+				cmd,
+			)
+		}
+		nameBar, _ := m.nameBar.Update(msg)
+		m.nameBar = nameBar.(TextInput)
+		return m, nil
+	case tea.WindowSizeMsg:
+		m.winSize = msg
+		m.selector.ViewSize = ViewSize{Width: msg.Width, Height: msg.Height - 1}
+		return m, nil
+	}
+	return m, nil
+}
+
+func (m FileManager) updateFileOrDir(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyPressMsg:
+		switch {
+		case key.Matches(msg, DefaultKeyMap.NewDir):
+			m.nameBar.Prompt = "new directory name: "
+			return m.setState(NewDir)
+		case key.Matches(msg, DefaultKeyMap.NewFile):
+			m.nameBar.Prompt = "new file name: "
+			return m.setState(NewFile)
+		default:
+			return m.setState(Normal)
+		}
+	case tea.WindowSizeMsg:
+		m.winSize = msg
+		m.selector.ViewSize = ViewSize{Width: msg.Width, Height: msg.Height - 1}
+		return m, nil
 	}
 	return m, nil
 }
@@ -204,7 +266,7 @@ func (m FileManager) updateErr(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m FileManager) View() tea.View {
 	switch m.state {
-	case Loading:
+	case Refresh:
 		return m.spinner.View()
 	case Normal:
 		return m.selector.View()
@@ -212,6 +274,10 @@ func (m FileManager) View() tea.View {
 		return m.viewSearch()
 	case Delete:
 		return m.viewDelete()
+	case NewFile, NewDir:
+		return m.viewNameInput()
+	case NewFileOrDir:
+		return m.viewNewFileOrDir()
 	case Err:
 		return m.viewErr()
 	}
@@ -226,6 +292,22 @@ func (m FileManager) viewSearch() tea.View {
 	selectorString := createSelectorViewStyle(m.winSize.Height - 1).
 		Render(m.selector.View().Content)
 	view := tea.NewView(selectorString + "\n" + m.searchBar.View().Content)
+	view.AltScreen = true
+	return view
+}
+
+func (m FileManager) viewNameInput() tea.View {
+	selectorString := createSelectorViewStyle(m.winSize.Height - 1).
+		Render(m.selector.View().Content)
+	view := tea.NewView(selectorString + "\n" + m.nameBar.View().Content)
+	view.AltScreen = true
+	return view
+}
+
+func (m FileManager) viewNewFileOrDir() tea.View {
+	selectorString := createSelectorViewStyle(m.winSize.Height - 1).
+		Render(m.selector.View().Content)
+	view := tea.NewView(selectorString + "\n" + "New [f]ile or [d]irectory?")
 	view.AltScreen = true
 	return view
 }
@@ -253,16 +335,44 @@ func (m FileManager) viewErr() tea.View {
 
 func (m FileManager) removeSelectedFiles() tea.Msg {
 	for _, file := range m.selector.GetSelectedFiles() {
-		if err := os.Remove(file.AbsolutePath); err != nil {
+		if err := os.RemoveAll(file.AbsolutePath); err != nil {
 			return err
 		}
 	}
 	return RemoveMsg{}
 }
 
+func (m FileManager) newFile(name string) tea.Cmd {
+	return func() tea.Msg {
+		newFilePath := filepath.Join(m.selector.Root(), name)
+		if _, err := os.Stat(newFilePath); err == nil {
+			return errors.New("File '" + newFilePath + "' exists")
+		}
+		if _, err := os.Create(newFilePath); err != nil {
+			return err
+		}
+		return nil
+	}
+}
+
+func (m FileManager) newDir(name string) tea.Cmd {
+	Logln("Creating dir", name)
+	return func() tea.Msg {
+		newDirPath := filepath.Join(m.selector.Root(), name)
+		if _, err := os.Stat(newDirPath); err == nil {
+			return errors.New("Directory '" + newDirPath + "' exists")
+		}
+		if err := os.Mkdir(newDirPath, 0777); err != nil {
+			Logln(err)
+			return err
+		}
+		return nil
+	}
+}
+
 func (m FileManager) setState(state State) (FileManager, tea.Cmd) {
 	m.state = state
-	if state == Loading {
+	if state == Refresh {
 		return m, tea.Batch(m.selector.RefreshFiles, m.spinner.Tick())
 	}
 	return m, tea.RequestWindowSize
@@ -270,8 +380,12 @@ func (m FileManager) setState(state State) (FileManager, tea.Cmd) {
 
 func (m FileManager) enterSelectedDir() (FileManager, tea.Cmd) {
 	files := m.selector.GetSelectedFiles()
-	if len(files) != 1 {
+	if len(files) > 1 {
 		m.errMsg = "Multiple entries selected"
+		return m.setState(Err)
+	}
+	if len(files) < 1 {
+		m.errMsg = "No entries selected"
 		return m.setState(Err)
 	}
 	path := files[0].AbsolutePath
@@ -296,7 +410,7 @@ func (m FileManager) enterDir(dir string) (FileManager, tea.Cmd) {
 		return m.setState(Err)
 	}
 	m.selector = selector
-	return m.setState(Loading)
+	return m.setState(Refresh)
 }
 
 func createSelectorViewStyle(height int) lipgloss.Style {

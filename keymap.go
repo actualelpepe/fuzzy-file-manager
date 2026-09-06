@@ -17,13 +17,18 @@ type KeyMap struct {
 	Bottom           key.Binding
 	Quit             key.Binding
 	ShowSearch       key.Binding
-	StartSearch      key.Binding
-	CancelSearch     key.Binding
+	Accept           key.Binding
+	Cancel           key.Binding
 	ClearSearch      key.Binding
 	Refresh          key.Binding
 	Delete           key.Binding
+	NewFileOrDir     key.Binding
 	Select           key.Binding
 	Help             key.Binding
+
+	// Not for help screen
+	NewFile key.Binding
+	NewDir  key.Binding
 }
 
 var DefaultKeyMap = KeyMap{
@@ -59,17 +64,21 @@ var DefaultKeyMap = KeyMap{
 		key.WithKeys("f", "/"),
 		key.WithHelp("f /", "show search bar"),
 	),
-	CancelSearch: key.NewBinding(
+	Cancel: key.NewBinding(
 		key.WithKeys("esc"),
-		key.WithHelp("esc", "cancel search"),
+		key.WithHelp("esc", "cancel an action"),
 	),
-	StartSearch: key.NewBinding(
+	Accept: key.NewBinding(
 		key.WithKeys("enter"),
-		key.WithHelp("↵", "start search"),
+		key.WithHelp("↵", "accept an action"),
 	),
 	ClearSearch: key.NewBinding(
 		key.WithKeys("F"),
 		key.WithHelp("F", "clear search"),
+	),
+	NewFileOrDir: key.NewBinding(
+		key.WithKeys("n"),
+		key.WithHelp("n", "create new file or directory"),
 	),
 	Refresh: key.NewBinding(
 		key.WithKeys("r"),
@@ -87,6 +96,12 @@ var DefaultKeyMap = KeyMap{
 		key.WithKeys("?"),
 		key.WithHelp("?", "show this text"),
 	),
+	NewFile: key.NewBinding(
+		key.WithKeys("f"),
+	),
+	NewDir: key.NewBinding(
+		key.WithKeys("d"),
+	),
 }
 
 func (k *KeyMap) GetHelpText() string {
@@ -98,12 +113,14 @@ func (k *KeyMap) GetHelpText() string {
 	fmt.Fprintln(w, k.Down.Help().Key, "\t", k.Down.Help().Desc)
 	fmt.Fprintln(w, k.EnterSelectedDir.Help().Key, "\t", k.EnterSelectedDir.Help().Desc)
 	fmt.Fprintln(w, k.EnterParentDir.Help().Key, "\t", k.EnterParentDir.Help().Desc)
+	fmt.Fprintln(w, k.Refresh.Help().Key, "\t", k.Refresh.Help().Desc)
 	fmt.Fprintln(w, k.ShowSearch.Help().Key, "\t", k.ShowSearch.Help().Desc)
-	fmt.Fprintln(w, k.CancelSearch.Help().Key, "\t", k.CancelSearch.Help().Desc)
 	fmt.Fprintln(w, k.ClearSearch.Help().Key, "\t", k.ClearSearch.Help().Desc)
+	fmt.Fprintln(w, k.Accept.Help().Key, "\t", k.Accept.Help().Desc)
+	fmt.Fprintln(w, k.Cancel.Help().Key, "\t", k.Cancel.Help().Desc)
 	fmt.Fprintln(w, k.Select.Help().Key, "\t", k.Select.Help().Desc)
 	fmt.Fprintln(w, k.Delete.Help().Key, "\t", k.Delete.Help().Desc)
-	fmt.Fprintln(w, k.Refresh.Help().Key, "\t", k.Refresh.Help().Desc)
+	fmt.Fprintln(w, k.NewFileOrDir.Help().Key, "\t", k.NewFileOrDir.Help().Desc)
 	fmt.Fprintln(w, k.Help.Help().Key, "\t", k.Help.Help().Desc)
 	w.Flush()
 	return stringBuilder.String()

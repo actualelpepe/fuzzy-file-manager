@@ -216,18 +216,16 @@ func (s FileSelector) applyFilter(filter string, index int) tea.Cmd {
 }
 
 func (s FileSelector) handleUserInput(msg tea.KeyPressMsg) FileSelector {
-	switch {
-	case key.Matches(msg, DefaultKeyMap.Down):
-		if len(s.visibleFiles) > 0 {
+	if len(s.visibleFiles) > 0 {
+		switch {
+		case key.Matches(msg, DefaultKeyMap.Down):
 			s.cursor++
-		}
-	case key.Matches(msg, DefaultKeyMap.Up):
-		if len(s.visibleFiles) > 0 {
+		case key.Matches(msg, DefaultKeyMap.Up):
 			s.cursor--
+		case key.Matches(msg, DefaultKeyMap.Select):
+			selectedFile := s.visibleFiles[s.cursor]
+			s.selectedFiles[selectedFile] = !s.selectedFiles[selectedFile]
 		}
-	case key.Matches(msg, DefaultKeyMap.Select):
-		selectedFile := s.visibleFiles[s.cursor]
-		s.selectedFiles[selectedFile] = !s.selectedFiles[selectedFile]
 	}
 	return s
 }
