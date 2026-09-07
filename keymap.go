@@ -21,6 +21,7 @@ type KeyMap struct {
 	Cancel           key.Binding
 	ClearSearch      key.Binding
 	Refresh          key.Binding
+	Rename           key.Binding
 	Delete           key.Binding
 	NewFileOrDir     key.Binding
 	Select           key.Binding
@@ -81,8 +82,12 @@ var DefaultKeyMap = KeyMap{
 		key.WithHelp("n", "create new file or directory"),
 	),
 	Refresh: key.NewBinding(
+		key.WithKeys("R"),
+		key.WithHelp("R", "refresh files"),
+	),
+	Rename: key.NewBinding(
 		key.WithKeys("r"),
-		key.WithHelp("r", "refresh files"),
+		key.WithHelp("r", "rename entry"),
 	),
 	Delete: key.NewBinding(
 		key.WithKeys("d"),
@@ -121,6 +126,7 @@ func (k *KeyMap) GetHelpText() string {
 	fmt.Fprintln(w, k.Select.Help().Key, "\t", k.Select.Help().Desc)
 	fmt.Fprintln(w, k.Delete.Help().Key, "\t", k.Delete.Help().Desc)
 	fmt.Fprintln(w, k.NewFileOrDir.Help().Key, "\t", k.NewFileOrDir.Help().Desc)
+	fmt.Fprintln(w, k.Rename.Help().Key, "\t", k.Rename.Help().Desc)
 	fmt.Fprintln(w, k.Help.Help().Key, "\t", k.Help.Help().Desc)
 	w.Flush()
 	return stringBuilder.String()

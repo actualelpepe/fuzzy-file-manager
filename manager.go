@@ -20,6 +20,7 @@ const (
 	NewFileOrDir
 	NewFile
 	NewDir
+	Rename
 	Err
 )
 
@@ -34,6 +35,9 @@ type FileManager struct {
 	winSize   tea.WindowSizeMsg
 	errMsg    string
 }
+
+var NotADirectoryError error = errors.New("Not a directory")
+var FileAlreadyExistsError error = errors.New("File already exists")
 
 func NewFileManager(path string) (FileManager, error) {
 	selector, err := NewFileSelector(path)
@@ -74,12 +78,14 @@ func (m FileManager) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateSearch(msg)
 	case Delete:
 		return m.updateDelete(msg)
-	case NewFile:
-		return m.updateNameInput(msg, m.newFile)
-	case NewDir:
-		return m.updateNameInput(msg, m.newDir)
 	case NewFileOrDir:
 		return m.updateFileOrDir(msg)
+	case Rename:
+		return m.updateInput(msg, m.renameSelectedFile)
+	case NewFile:
+		return m.updateInput(msg, m.newFile)
+	case NewDir:
+		return m.updateInput(msg, m.newDir)
 	case Err:
 		return m.updateErr(msg)
 	}
@@ -118,9 +124,9 @@ func (m FileManager) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.selector = m.selector.GoBottom()
 			return m, nil
 		case key.Matches(msg, DefaultKeyMap.Delete):
-			if len(m.selector.GetSelectedFiles()) == 0 {
-				m.errMsg = "Nothing selected"
-				return m.setState(Err)
+			_, err := m.selector.GetSelectedFiles()
+			if err != nil {
+				return m.throwError(err)
 			}
 			return m.setState(Delete)
 		case key.Matches(msg, DefaultKeyMap.EnterSelectedDir):
@@ -131,6 +137,14 @@ func (m FileManager) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.setState(NewFileOrDir)
 		case key.Matches(msg, DefaultKeyMap.Refresh):
 			return m.setState(Refresh)
+		case key.Matches(msg, DefaultKeyMap.Rename):
+			file, err := m.selector.GetOneSelectedFile()
+			if err != nil {
+				return m.throwError(err)
+			}
+			m.nameBar.Prompt = "rename: "
+			m.nameBar.Content = file.Name
+			return m.setState(Rename)
 		case key.Matches(msg, DefaultKeyMap.ShowSearch):
 			return m.setState(Search)
 		case key.Matches(msg, DefaultKeyMap.ClearSearch):
@@ -140,8 +154,7 @@ func (m FileManager) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, DefaultKeyMap.Help):
 			cmd, err := Less(DefaultKeyMap.GetHelpText())
 			if err != nil {
-				m.errMsg = err.Error()
-				return m.setState(Err)
+				return m.throwError(err)
 			}
 			return m, cmd
 		}
@@ -201,7 +214,7 @@ func (m FileManager) updateDelete(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m FileManager) updateNameInput(msg tea.Msg, createCmd func(string) tea.Cmd) (tea.Model, tea.Cmd) {
+func (m FileManager) updateInput(msg tea.Msg, cmd func(string) tea.Cmd) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		switch {
@@ -209,12 +222,12 @@ func (m FileManager) updateNameInput(msg tea.Msg, createCmd func(string) tea.Cmd
 			m.nameBar.Content = ""
 			return m.setState(Normal)
 		case key.Matches(msg, DefaultKeyMap.Accept):
-			name := m.nameBar.Content
+			input := m.nameBar.Content
 			m.nameBar.Content = ""
-			m, cmd := m.setState(Refresh)
+			m, stateCmd := m.setState(Refresh)
 			return m, tea.Sequence(
-				createCmd(name),
-				cmd,
+				cmd(input),
+				stateCmd,
 			)
 		}
 		nameBar, _ := m.nameBar.Update(msg)
@@ -274,18 +287,19 @@ func (m FileManager) View() tea.View {
 		return m.viewSearch()
 	case Delete:
 		return m.viewDelete()
-	case NewFile, NewDir:
-		return m.viewNameInput()
 	case NewFileOrDir:
 		return m.viewNewFileOrDir()
+	case NewFile, NewDir, Rename:
+		return m.viewInput()
 	case Err:
 		return m.viewErr()
+	default:
+		invalidView := tea.NewView(
+			"Invalid program state. There is nothing you can do ¯\\_(ツ)_/¯",
+		)
+		invalidView.AltScreen = true
+		return invalidView
 	}
-	invalidView := tea.NewView(
-		"Invalid program state. There is nothing you can do ¯\\_(ツ)_/¯",
-	)
-	invalidView.AltScreen = true
-	return invalidView
 }
 
 func (m FileManager) viewSearch() tea.View {
@@ -296,7 +310,7 @@ func (m FileManager) viewSearch() tea.View {
 	return view
 }
 
-func (m FileManager) viewNameInput() tea.View {
+func (m FileManager) viewInput() tea.View {
 	selectorString := createSelectorViewStyle(m.winSize.Height - 1).
 		Render(m.selector.View().Content)
 	view := tea.NewView(selectorString + "\n" + m.nameBar.View().Content)
@@ -334,7 +348,11 @@ func (m FileManager) viewErr() tea.View {
 }
 
 func (m FileManager) removeSelectedFiles() tea.Msg {
-	for _, file := range m.selector.GetSelectedFiles() {
+	files, err := m.selector.GetSelectedFiles()
+	if err != nil {
+		return err
+	}
+	for _, file := range files {
 		if err := os.RemoveAll(file.AbsolutePath); err != nil {
 			return err
 		}
@@ -346,7 +364,7 @@ func (m FileManager) newFile(name string) tea.Cmd {
 	return func() tea.Msg {
 		newFilePath := filepath.Join(m.selector.Root(), name)
 		if _, err := os.Stat(newFilePath); err == nil {
-			return errors.New("File '" + newFilePath + "' exists")
+			return FileAlreadyExistsError
 		}
 		if _, err := os.Create(newFilePath); err != nil {
 			return err
@@ -360,10 +378,23 @@ func (m FileManager) newDir(name string) tea.Cmd {
 	return func() tea.Msg {
 		newDirPath := filepath.Join(m.selector.Root(), name)
 		if _, err := os.Stat(newDirPath); err == nil {
-			return errors.New("Directory '" + newDirPath + "' exists")
+			return FileAlreadyExistsError
 		}
 		if err := os.Mkdir(newDirPath, 0777); err != nil {
-			Logln(err)
+			return err
+		}
+		return nil
+	}
+}
+
+func (m FileManager) renameSelectedFile(newName string) tea.Cmd {
+	return func() tea.Msg {
+		file, err := m.selector.GetOneSelectedFile()
+		if err != nil {
+			return err
+		}
+		dir := filepath.Dir(file.AbsolutePath)
+		if err := os.Rename(file.AbsolutePath, filepath.Join(dir, newName)); err != nil {
 			return err
 		}
 		return nil
@@ -379,21 +410,15 @@ func (m FileManager) setState(state State) (FileManager, tea.Cmd) {
 }
 
 func (m FileManager) enterSelectedDir() (FileManager, tea.Cmd) {
-	files := m.selector.GetSelectedFiles()
-	if len(files) > 1 {
-		m.errMsg = "Multiple entries selected"
-		return m.setState(Err)
-	}
-	if len(files) < 1 {
-		m.errMsg = "No entries selected"
-		return m.setState(Err)
+	files, err := m.selector.GetSelectedFiles()
+	if err != nil {
+		return m.throwError(err)
 	}
 	path := files[0].AbsolutePath
 	if !files[0].IsDir {
 		path = filepath.Dir(path)
 		if path == m.selector.Root() {
-			m.errMsg = "Not a directory"
-			return m.setState(Err)
+			m.throwError(NotADirectoryError)
 		}
 	}
 	return m.enterDir(path)
@@ -406,11 +431,15 @@ func (m FileManager) enterParentDir() (FileManager, tea.Cmd) {
 func (m FileManager) enterDir(dir string) (FileManager, tea.Cmd) {
 	selector, err := NewFileSelector(dir)
 	if err != nil {
-		m.errMsg = err.Error()
-		return m.setState(Err)
+		return m.throwError(err)
 	}
 	m.selector = selector
 	return m.setState(Refresh)
+}
+
+func (m FileManager) throwError(err error) (FileManager, tea.Cmd) {
+	m.errMsg = err.Error()
+	return m.setState(Err)
 }
 
 func createSelectorViewStyle(height int) lipgloss.Style {

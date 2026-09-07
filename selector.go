@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"io/fs"
 	"path/filepath"
 	"regexp"
@@ -43,6 +44,9 @@ type FileSelector struct {
 	visibleFiles  Files
 	selectedFiles SelectedFiles
 }
+
+var NoEntriesError error = errors.New("No entries selected")
+var MultipleEntriesError error = errors.New("Multiple entries selected")
 
 // Create new file selector that lists all files
 // in path recursively.
@@ -155,11 +159,11 @@ func (s FileSelector) RefreshFiles() tea.Msg {
 	return files
 }
 
-func (s FileSelector) GetSelectedFiles() []File {
+func (s FileSelector) getSelectedFiles() []File {
 	if len(s.visibleFiles) < 1 {
-		return []File{}
+		return Files{}
 	}
-	files := []File{}
+	files := Files{}
 	for i, v := range s.selectedFiles {
 		if v {
 			files = append(files, i)
@@ -169,6 +173,30 @@ func (s FileSelector) GetSelectedFiles() []File {
 		files = append(files, s.visibleFiles[s.cursor])
 	}
 	return files
+}
+
+// Returns a list of selected files. The list is guaranteed to have at
+// least one file. Returns an error if the root directory is empty an
+// no files are selected.
+func (s FileSelector) GetSelectedFiles() (Files, error) {
+	files := s.getSelectedFiles()
+	if len(files) < 1 {
+		return Files{}, NoEntriesError
+	}
+	return files, nil
+}
+
+// Returns one and only one file selected. If there are multiple
+// files selected, returns en error.
+func (s FileSelector) GetOneSelectedFile() (File, error) {
+	files := s.getSelectedFiles()
+	if len(files) > 1 {
+		return File{}, MultipleEntriesError
+	}
+	if len(files) < 1 {
+		return File{}, NoEntriesError
+	}
+	return files[0], nil
 }
 
 func (s FileSelector) ApplyFilter(filter string) tea.Cmd {
