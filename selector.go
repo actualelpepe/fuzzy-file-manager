@@ -159,22 +159,6 @@ func (s FileSelector) RefreshFiles() tea.Msg {
 	return files
 }
 
-func (s FileSelector) getSelectedFiles() []File {
-	if len(s.visibleFiles) < 1 {
-		return Files{}
-	}
-	files := Files{}
-	for i, v := range s.selectedFiles {
-		if v {
-			files = append(files, i)
-		}
-	}
-	if len(files) == 0 {
-		files = append(files, s.visibleFiles[s.cursor])
-	}
-	return files
-}
-
 // Returns a list of selected files. The list is guaranteed to have at
 // least one file. Returns an error if the root directory is empty an
 // no files are selected.
@@ -215,6 +199,22 @@ func (s FileSelector) Root() string {
 	return s.root
 }
 
+func (s FileSelector) getSelectedFiles() []File {
+	if len(s.visibleFiles) < 1 {
+		return Files{}
+	}
+	files := Files{}
+	for i, v := range s.selectedFiles {
+		if v {
+			files = append(files, i)
+		}
+	}
+	if len(files) == 0 {
+		files = append(files, s.visibleFiles[s.cursor])
+	}
+	return files
+}
+
 func (s FileSelector) applyFilter(filter string, index int) tea.Cmd {
 	if index >= len(s.files) || index < 0 {
 		return nil
@@ -253,6 +253,8 @@ func (s FileSelector) handleUserInput(msg tea.KeyPressMsg) FileSelector {
 		case key.Matches(msg, DefaultKeyMap.Select):
 			selectedFile := s.visibleFiles[s.cursor]
 			s.selectedFiles[selectedFile] = !s.selectedFiles[selectedFile]
+		case key.Matches(msg, DefaultKeyMap.DeselectAll):
+			s.selectedFiles = SelectedFiles{}
 		}
 	}
 	return s

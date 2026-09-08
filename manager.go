@@ -2,7 +2,9 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 
 	"charm.land/bubbles/v2/key"
@@ -21,19 +23,20 @@ const (
 	NewFile
 	NewDir
 	Rename
-	Err
+	Logs
 )
 
 type RemoveMsg struct{}
 
 type FileManager struct {
-	selector  FileSelector
-	searchBar TextInput
-	nameBar   TextInput
-	spinner   Spinner
-	state     State
-	winSize   tea.WindowSizeMsg
-	errMsg    string
+	selector   FileSelector
+	searchBar  TextInput
+	nameBar    TextInput
+	spinner    Spinner
+	state      State
+	winSize    tea.WindowSizeMsg
+	fileBuffer Files
+	errMsg     string
 }
 
 var NotADirectoryError error = errors.New("Not a directory")
@@ -67,7 +70,7 @@ func (m FileManager) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case error:
 		m.errMsg = "error: " + msg.Error()
-		return m.setState(Err)
+		return m.setState(Logs)
 	}
 	switch m.state {
 	case Refresh:
@@ -86,8 +89,8 @@ func (m FileManager) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateInput(msg, m.newFile)
 	case NewDir:
 		return m.updateInput(msg, m.newDir)
-	case Err:
-		return m.updateErr(msg)
+	case Logs:
+		return m.updateLogs(msg)
 	}
 	return m, nil
 }
@@ -126,9 +129,20 @@ func (m FileManager) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, DefaultKeyMap.Delete):
 			_, err := m.selector.GetSelectedFiles()
 			if err != nil {
-				return m.throwError(err)
+				return m.logs(err)
 			}
 			return m.setState(Delete)
+		case key.Matches(msg, DefaultKeyMap.Yank):
+			fileBuffer, err := m.selector.GetSelectedFiles()
+			if err != nil {
+				return m.logs(err)
+			}
+			m.fileBuffer = fileBuffer
+			return m.logs("Yanked ", len(m.fileBuffer), " files")
+		case key.Matches(msg, DefaultKeyMap.Copy):
+			return m.copyBufferedFiles()
+		case key.Matches(msg, DefaultKeyMap.Move):
+			return m.moveBufferedFiles()
 		case key.Matches(msg, DefaultKeyMap.EnterSelectedDir):
 			return m.enterSelectedDir()
 		case key.Matches(msg, DefaultKeyMap.EnterParentDir):
@@ -140,7 +154,7 @@ func (m FileManager) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, DefaultKeyMap.Rename):
 			file, err := m.selector.GetOneSelectedFile()
 			if err != nil {
-				return m.throwError(err)
+				return m.logs(err)
 			}
 			m.nameBar.Prompt = "rename: "
 			m.nameBar.Content = file.Name
@@ -154,7 +168,7 @@ func (m FileManager) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, DefaultKeyMap.Help):
 			cmd, err := Less(DefaultKeyMap.GetHelpText())
 			if err != nil {
-				return m.throwError(err)
+				return m.logs(err)
 			}
 			return m, cmd
 		}
@@ -262,7 +276,7 @@ func (m FileManager) updateFileOrDir(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m FileManager) updateErr(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m FileManager) updateLogs(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		m, cmd := m.setState(Normal)
@@ -291,7 +305,7 @@ func (m FileManager) View() tea.View {
 		return m.viewNewFileOrDir()
 	case NewFile, NewDir, Rename:
 		return m.viewInput()
-	case Err:
+	case Logs:
 		return m.viewErr()
 	default:
 		invalidView := tea.NewView(
@@ -401,6 +415,53 @@ func (m FileManager) renameSelectedFile(newName string) tea.Cmd {
 	}
 }
 
+func (m FileManager) copyBufferedFiles() (FileManager, tea.Cmd) {
+	if len(m.fileBuffer) == 0 {
+		return m.logs("No files in buffer")
+	}
+	sourcePaths := make([]string, 0, len(m.fileBuffer))
+	for _, file := range m.fileBuffer {
+		sourcePaths = append(sourcePaths, file.AbsolutePath)
+	}
+	args := []string{"-r"}
+	args = append(args, sourcePaths...)
+	args = append(args, "-t", m.selector.Root())
+	cmd := exec.Command("cp", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		less, errLess := Less(string(output))
+		if errLess != nil {
+			return m.logs(errLess)
+		}
+		return m, less
+	}
+	m.fileBuffer = Files{}
+	return m.setState(Refresh)
+}
+
+func (m FileManager) moveBufferedFiles() (FileManager, tea.Cmd) {
+	if len(m.fileBuffer) == 0 {
+		return m.logs("No files in buffer")
+	}
+	sourcePaths := make([]string, 0, len(m.fileBuffer))
+	for _, file := range m.fileBuffer {
+		sourcePaths = append(sourcePaths, file.AbsolutePath)
+	}
+	args := sourcePaths
+	args = append(args, "-t", m.selector.Root())
+	cmd := exec.Command("mv", args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		less, errLess := Less(string(output))
+		if errLess != nil {
+			return m.logs(errLess)
+		}
+		return m, less
+	}
+	m.fileBuffer = Files{}
+	return m.setState(Refresh)
+}
+
 func (m FileManager) setState(state State) (FileManager, tea.Cmd) {
 	m.state = state
 	if state == Refresh {
@@ -410,15 +471,15 @@ func (m FileManager) setState(state State) (FileManager, tea.Cmd) {
 }
 
 func (m FileManager) enterSelectedDir() (FileManager, tea.Cmd) {
-	files, err := m.selector.GetSelectedFiles()
+	file, err := m.selector.GetOneSelectedFile()
 	if err != nil {
-		return m.throwError(err)
+		return m.logs(err)
 	}
-	path := files[0].AbsolutePath
-	if !files[0].IsDir {
+	path := file.AbsolutePath
+	if !file.IsDir {
 		path = filepath.Dir(path)
 		if path == m.selector.Root() {
-			m.throwError(NotADirectoryError)
+			return m.logs(NotADirectoryError)
 		}
 	}
 	return m.enterDir(path)
@@ -431,15 +492,15 @@ func (m FileManager) enterParentDir() (FileManager, tea.Cmd) {
 func (m FileManager) enterDir(dir string) (FileManager, tea.Cmd) {
 	selector, err := NewFileSelector(dir)
 	if err != nil {
-		return m.throwError(err)
+		return m.logs(err)
 	}
 	m.selector = selector
 	return m.setState(Refresh)
 }
 
-func (m FileManager) throwError(err error) (FileManager, tea.Cmd) {
-	m.errMsg = err.Error()
-	return m.setState(Err)
+func (m FileManager) logs(a ...any) (FileManager, tea.Cmd) {
+	m.errMsg = fmt.Sprint(a...)
+	return m.setState(Logs)
 }
 
 func createSelectorViewStyle(height int) lipgloss.Style {

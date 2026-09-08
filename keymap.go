@@ -23,8 +23,12 @@ type KeyMap struct {
 	Refresh          key.Binding
 	Rename           key.Binding
 	Delete           key.Binding
+	Yank             key.Binding
+	Move             key.Binding
+	Copy             key.Binding
 	NewFileOrDir     key.Binding
 	Select           key.Binding
+	DeselectAll      key.Binding
 	Help             key.Binding
 
 	// Not for help screen
@@ -87,15 +91,31 @@ var DefaultKeyMap = KeyMap{
 	),
 	Rename: key.NewBinding(
 		key.WithKeys("r"),
-		key.WithHelp("r", "rename entry"),
+		key.WithHelp("r", "rename file"),
 	),
 	Delete: key.NewBinding(
 		key.WithKeys("d"),
 		key.WithHelp("d", "delete selected entries"),
 	),
+	Yank: key.NewBinding(
+		key.WithKeys("y"),
+		key.WithHelp("y", "yank selected files to the buffer"),
+	),
+	Copy: key.NewBinding(
+		key.WithKeys("c", "p"),
+		key.WithHelp("c p", "copy files from the buffer to new location"),
+	),
+	Move: key.NewBinding(
+		key.WithKeys("x", "P"),
+		key.WithHelp("x P", "move files from the buffer to new location"),
+	),
 	Select: key.NewBinding(
-		key.WithKeys("space"),
-		key.WithHelp("⎵", "select entry"),
+		key.WithKeys("space", "s"),
+		key.WithHelp("⎵ s", "select file"),
+	),
+	DeselectAll: key.NewBinding(
+		key.WithKeys("S"),
+		key.WithHelp("S", "deselect all files"),
 	),
 	Help: key.NewBinding(
 		key.WithKeys("?"),
@@ -124,7 +144,11 @@ func (k *KeyMap) GetHelpText() string {
 	fmt.Fprintln(w, k.Accept.Help().Key, "\t", k.Accept.Help().Desc)
 	fmt.Fprintln(w, k.Cancel.Help().Key, "\t", k.Cancel.Help().Desc)
 	fmt.Fprintln(w, k.Select.Help().Key, "\t", k.Select.Help().Desc)
+	fmt.Fprintln(w, k.DeselectAll.Help().Key, "\t", k.DeselectAll.Help().Desc)
 	fmt.Fprintln(w, k.Delete.Help().Key, "\t", k.Delete.Help().Desc)
+	fmt.Fprintln(w, k.Yank.Help().Key, "\t", k.Yank.Help().Desc)
+	fmt.Fprintln(w, k.Copy.Help().Key, "\t", k.Copy.Help().Desc)
+	fmt.Fprintln(w, k.Move.Help().Key, "\t", k.Move.Help().Desc)
 	fmt.Fprintln(w, k.NewFileOrDir.Help().Key, "\t", k.NewFileOrDir.Help().Desc)
 	fmt.Fprintln(w, k.Rename.Help().Key, "\t", k.Rename.Help().Desc)
 	fmt.Fprintln(w, k.Help.Help().Key, "\t", k.Help.Help().Desc)
