@@ -138,6 +138,7 @@ func (m FileManager) updateNormal(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.logs(err)
 			}
 			m.fileBuffer = fileBuffer
+			m.selector = m.selector.DeselectFiles()
 			return m.logs("Yanked ", len(m.fileBuffer), " files")
 		case key.Matches(msg, DefaultKeyMap.Copy):
 			return m.copyBufferedFiles()

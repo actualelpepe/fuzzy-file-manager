@@ -122,6 +122,11 @@ func (s FileSelector) View() tea.View {
 	return view
 }
 
+func (s FileSelector) DeselectFiles() FileSelector {
+	s.selectedFiles = SelectedFiles{}
+	return s
+}
+
 func (s FileSelector) GoTop() FileSelector {
 	s.cursor = 0
 	return s
@@ -254,7 +259,7 @@ func (s FileSelector) handleUserInput(msg tea.KeyPressMsg) FileSelector {
 			selectedFile := s.visibleFiles[s.cursor]
 			s.selectedFiles[selectedFile] = !s.selectedFiles[selectedFile]
 		case key.Matches(msg, DefaultKeyMap.DeselectAll):
-			s.selectedFiles = SelectedFiles{}
+			return s.DeselectFiles()
 		}
 	}
 	return s
